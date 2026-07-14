@@ -1,0 +1,14 @@
+[project]
+name = "uv-fastapi-backend"
+version = "0.1.0"
+description = "Fast API project"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.139.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+]
+
+[tool.fastapi]
+entrypoint = "src.main:app"
