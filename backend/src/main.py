@@ -1,27 +1,18 @@
-from functools import lru_cache
-from typing import Annotated
-
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
-from src import config
+from src.api.routers import documents, health
+from src.dependencies import get_settings
+from src.utils.logger import get_logger, setup_logging
+
+# Initialization before FastAPI constructed
+setup_logging(log_level="INFO")
+logger = get_logger("api-backend.main")
 
 load_dotenv()
-app = FastAPI()
+settings = get_settings()
+app = FastAPI(title=settings.app_name)
 
 
-@lru_cache
-def get_settings():
-    return config.Settings()
-
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-
-@app.get("/info")
-async def info(settings: Annotated[config.Settings, Depends(get_settings)]):
-    return {
-        "app_name": settings.app_name,
-    }
+app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
+app.include_router(documents.router, prefix=settings.api_prefix, tags=["upload"])
