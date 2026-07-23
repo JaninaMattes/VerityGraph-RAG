@@ -1,0 +1,9 @@
+.git
+.github
+default.etcd
+*.gz
+*.tar.gz
+*.bzip2
+*.zip
+browser/node_modules
+node_modules

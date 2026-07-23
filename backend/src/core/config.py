@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     minio_bucket_name: str
     minio_access_key: str
     minio_secret_key: str
+    minio_sse_customer_key: str
+    minio_secure: bool
     minio_region: str = "us-east-1"
 
     model_config = SettingsConfigDict(
