@@ -1,7 +1,13 @@
 # Initialize the router instance
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+import uuid
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import ValidationError
 
+from src.domain.documents.schemas import Response, URLResponse
+from src.domain.documents.dataclasses import DocumentStream
+from src.domain.documents.service import DocumentService
+from src.api.utils.validate import validate_file
 from src.utils.logger import get_logger
 
 
@@ -9,32 +15,66 @@ logger = get_logger("api-backend.routers.documents")
 
 router = APIRouter()
 
+@router.post("/upload", response_model=URLResponse, status_code=status.HTTP_200_OK)
+async def create_upload_url(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: DocumentService = Depends(DocumentService),
+):
+    tenant_id = current_user.tenant_id
+    try:
+        return await service.create_upload_url(tenant_id)
+    except Exception as e:
+        logger.error(
+            f"Generation of presigned URL failure! Error: {e}", exc_info=True
+        )  # log internally, keep external message generic
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred while generating the presigned upload URL.",
+        ) from e
 
-@router.post("/upload", status_code=status.HTTP_201_CREATED)
-async def upload(file: UploadFile = File(...)):
-    if file.content_type not in {
-        "video/mp4",
-        "image/png",
-        "image/jpeg",
-        "application/pdf",
-        "text/markdown",
-    }:
-        raise HTTPException(415, "Unsupported file type")
+
+@router.get(
+    "/{document_id}/download",
+    response_model=URLResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def create_download_url(
+    document_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: DocumentService = Depends(DocumentService),
+):
+    tenant_id = current_user.tenant_id
+    try:
+        return await service.create_download_url(document_id, tenant_id)
+    except Exception as e:
+        logger.error(
+            f"Upload binary file execution failure: {e}", exc_info=True
+        )  # log internally, keep external message generic
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred while generating the presigned download URL.",
+        ) from e
+
+
+@router.post(
+    "/upload/stream", response_model=Response, status_code=status.HTTP_201_CREATED
+)
+async def upload_documents(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: DocumentService = Depends(DocumentService),
+):
+    validate_file(file)
+    tenant_id = current_user.tenant_id
 
     try:
-        data = await file.read()  # TODO: OK for small files - stream to disk directly
-        return {
-            "filename": file.filename,
-            "type": file.content_type,
-            "bytes": len(data),
-        }
-    except ValidationError as pydantic_err:
-        # Catch strict data schema parsing errors
-        logger.warning(f"Schema validation failure during ingestion: {pydantic_err}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Data integrity validation failed inside the system contract layer.",
-        ) from pydantic_err
+        document = DocumentStream(
+            stream=file.file,
+            filename=file.filename if file.filename else "",
+            content_type=file.content_type,
+            size_bytes=file.size,
+        )
+        return await service.create(document, tenant_id=tenant_id)
 
     except Exception as e:
         logger.error(
@@ -46,14 +86,25 @@ async def upload(file: UploadFile = File(...)):
             "and vectorising the uploaded document.",
         ) from e
 
+@router.delete(
+    "/{document_id}/delete", response_model=Response, status_code=status.HTTP_200_OK
+)
+async def delete_documents(
+    document_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: DocumentService = Depends(DocumentService),
+):
+    tenant_id = current_user.tenant_id
 
-@router.post("/upload/stream", status_code=status.HTTP_201_CREATED)
-async def upload_stream(file: UploadFile = File(...)):
-    if file.content_type not in {
-        "video/mp4",
-        "image/png",
-        "image/jpeg",
-        "application/pdf",
-        "text/markdown",
-    }:
-        raise HTTPException(415, "Unsupported file type")
+    try:
+        return await service.delete(document_id, tenant_id)
+
+    except Exception as e:
+        logger.error(
+            f"Delete binary file execution failure: {e}", exc_info=True
+        )  # log internally, keep external message generic
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred while processing "
+            "and removing the document from storage.",
+        ) from e
