@@ -1,3 +1,4 @@
+import base64
 from typing import Annotated
 import uuid
 
@@ -38,6 +39,7 @@ def get_minio_client(settings: SettingsDep) -> Minio:
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key,
         region=settings.minio_region,
+        secure=settings.minio_secure,
     )
 
 
@@ -59,7 +61,7 @@ def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> Minio
         client=client,
         bucket=settings.minio_bucket_name,
         sse_key=SseCustomerKey(
-            key=settings.minio_sse_customer_key.encode()
+            key=base64.b64decode(settings.minio_sse_customer_key)
         ),  # string to byte code
     )
 
