@@ -1,9 +1,8 @@
-# src/shared/logger.py
+# src/utils/logger.py
 # custom structlog setup
 
 import logging
 from typing import Any
-
 import structlog
 
 
