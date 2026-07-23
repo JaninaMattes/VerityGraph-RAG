@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     minio_region: str = "us-east-1"
 
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env.app",
+        env_file=BASE_DIR / ".env",
         case_sensitive=False,
         extra="ignore",
     )
