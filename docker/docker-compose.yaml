@@ -1,0 +1,70 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PW}
+      - POSTGRES_DB=${POSTGRES_DB} #optional (specify default database instead of $POSTGRES_DB)
+    ports:
+      - "5432:5432"
+    restart: always
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW}
+    ports:
+      - "5050:80"
+    restart: always
+
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: graphrag-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+  #   volumes:
+  #     - minio_data:/data
+  #   ports:
+  #     - "9000:9000" # S3 API
+  #     - "9001:9001" # Web Console
+  #   networks:
+  #     - graphrag_network
+  #   healthcheck:
+  #     test: ["CMD", "mc", "ready", "local"]
+  #     interval: 5s
+  #     timeout: 2s
+  #     retries: 5
+
+  # minio-init:
+  #   image: minio/mc:latest
+  #   container_name: graphrag-minio-init
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  #   env_file:
+  #     - .env
+  #   entrypoint: >
+  #     /bin/sh -c "
+  #     mc alias set local http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY};
+  #     mc mb local/$${MINIO_BUCKET_NAME} --ignore-existing;
+  #     exit 0;
+  #     "
+  #   networks:
+  #     - graphrag_network
+
+volumes:
+  postgresql_data:
+  pgadmin_data:
+  # minio_data:
+
+networks:
+  graphrag_network:
+    driver: bridge
