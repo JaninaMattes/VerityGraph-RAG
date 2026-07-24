@@ -4,14 +4,14 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 from src.utils.exceptions import DocumentNotFoundException
+from src.application.port.document_repository import DocumentRepository
 from src.shared.enums import DocumentStatus
 from src.domain.documents.entities import DocumentEntity
-from src.domain.documents.repository import DocumentRepository
 from src.domain.documents.dataclasses import DocumentStream, StorageKey
 from src.domain.documents.schemas import CreateResponse, URLResponse, DeleteResponse
-from src.infrastructure.storage.provider import StorageProvider
+from src.application.port.storage_provider import StorageProvider
 from src.workflows.ingestion.workflow import WorkflowClient
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.domain.doc.service")
 
@@ -29,51 +29,76 @@ class DocumentService:
         self.storage = storage
         self.workflow = workflow
 
-    async def create_upload_url(self, tenant_id: uuid.UUID) -> URLResponse:
+    async def create_upload_url(
+        self,
+        tenant_id: uuid.UUID,
+        namespace: str = "documents",
+    ) -> URLResponse:
         """Create presigned URL to upload file to S3 bucket."""
         document_id = uuid.uuid4()
         expires_at = timedelta(minutes=30)  # 30 mins expiration
-        storage_key = StorageKey.document(tenant_id=tenant_id, document_id=document_id)
+        storage_key = StorageKey.document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            namespace=namespace,
+        )
         try:
-            presigned_url = self.storage.create_upload_url(
-                storage_key, expires_at=expires_at
+            presigned_url = await asyncio.to_thread(
+                self.storage.create_upload_url,
+                storage_key=storage_key,
+                expires_at=expires_at,
             )
             return URLResponse(
                 url=presigned_url, storage_key=storage_key.value, expires_at=expires_at
             )
         except Exception as e:
             logger.error(
-                f"Failed to generate presigned URL for tenant {tenant_id} to blob storage: {e}",
+                f"Failed to generate presigned upload URL for tenant {tenant_id} to blob storage! Error: {e}",
                 exc_info=True,
             )
             raise
 
     async def create_download_url(
-        self, document_id: uuid.UUID, tenant_id: uuid.UUID
+        self,
+        document_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        namespace: str = "documents",
     ) -> URLResponse:
         """Create presigned URL to download file from S3 bucket."""
-        storage_key = StorageKey.document(tenant_id=tenant_id, document_id=document_id)
-        expires_at = timedelta(hours=2)
+        expires_at = timedelta(minutes=30)  # 30 mins expiration
+        storage_key = StorageKey.document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            namespace=namespace,
+        )
         try:
-            presigned_url = self.storage.create_download_url(
-                storage_key, expires_at=expires_at
+            presigned_url = await asyncio.to_thread(
+                self.storage.create_download_url,
+                storage_key=storage_key,
+                expires_at=expires_at,
             )
             return URLResponse(
                 url=presigned_url, storage_key=storage_key.value, expires_at=expires_at
             )
         except Exception as e:
             logger.error(
-                f"Failed to generate presigned URL for {storage_key.value} to blob storage: {e}",
+                f"Failed to generate presigned download URL for tenant {tenant_id} to blob storage! Error: {e}",
                 exc_info=True,
             )
             raise
 
     async def create(
-        self, file: DocumentStream, tenant_id: uuid.UUID
+        self,
+        file: DocumentStream,
+        tenant_id: uuid.UUID,
+        namespace: str = "documents",
     ) -> CreateResponse:
         document_id = uuid.uuid4()
-        storage_key = StorageKey.document(tenant_id=tenant_id, document_id=document_id)
-
+        storage_key = StorageKey.document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            namespace=namespace,
+        )
         try:
             # Non-blocking storage call
             # TODO: Deduplicate by matching checksum, then point to same file
@@ -82,7 +107,7 @@ class DocumentService:
             )
         except Exception as e:
             logger.error(
-                f"Failed to upload document {file.filename} to blob storage: {e}",
+                f"Failed to upload document {file.filename} to blob storage! Error: {e}",
                 exc_info=True,
             )
             raise
@@ -116,7 +141,7 @@ class DocumentService:
         except Exception as e:
             await asyncio.to_thread(self.storage.delete_file, storage_key=storage_key)
             logger.error(
-                f"Failed to process upload workflow. Cleaning up storage {e}",
+                f"Failed to process upload workflow. Cleaning up storage. Error: {e}",
                 exc_info=True,
             )
             raise
@@ -148,7 +173,7 @@ class DocumentService:
             )
         except Exception as e:
             logger.error(
-                f"Failed to process upload workflow. Cleaning up storage {e}",
+                f"Failed to process removal workflow. Cleaning up storage. Error: {e}",
                 exc_info=True,
             )
             raise
