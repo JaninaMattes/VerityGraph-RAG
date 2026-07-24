@@ -4,8 +4,8 @@ import uuid
 
 from fastapi import Depends
 from minio import Minio
-from sqlalchemy.ext.asyncio import AsyncSession
 from minio.sse import SseCustomerKey
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.workflows.client import WorkflowClient
 from src.infrastructure.storage.minio.storage import MinioStorage
