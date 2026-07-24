@@ -3,14 +3,15 @@ from datetime import timedelta
 from minio import Minio, S3Error
 from minio.sse import SseCustomerKey
 
+from src.utils.exceptions import StorageOperationError
 from src.domain.documents.dataclasses import (
     DocumentChecksum,
     DocumentStream,
     StorageKey,
     StoredFile,
 )
-from src.infrastructure.storage.provider import StorageProvider
-from src.utils.logger import get_logger
+from src.application.port.storage_provider import StorageProvider
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.infra.minio")
 
@@ -25,14 +26,11 @@ class MinioStorage(StorageProvider):
         bucket: str,
         sse_key: SseCustomerKey | None = None,
     ) -> None:
-        super().__init__()
         self.client = client
         self.bucket_name = bucket
         self.sse_key = sse_key
 
-        self._create_bucket()
-
-    def _create_bucket(self) -> None:
+    def create_bucket(self) -> None:
         """Checks if bucket already exists for warm start."""
         found = self.client.bucket_exists(bucket_name=self.bucket_name)
         if not found:
@@ -113,7 +111,7 @@ class MinioStorage(StorageProvider):
         try:
             uploaded_file = self.client.put_object(
                 bucket_name=self.bucket_name,
-                object_name=StorageKey.value,
+                object_name=storage_key.value,
                 data=file.stream,
                 length=length,
                 part_size=part_size,
@@ -149,7 +147,9 @@ class MinioStorage(StorageProvider):
                 f"Failed to upload binary file '{storage_key}' to MinIO: {e}",
                 exc_info=True,
             )
-            raise
+            raise StorageOperationError(
+                "MinIO Storage Error", f"Failed to upload {storage_key}"
+            ) from e
 
     def delete_file(
         self,

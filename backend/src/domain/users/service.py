@@ -5,9 +5,9 @@ from src.shared.enums import UserStatus
 from src.domain.users.dataclasses import User
 from src.domain.users.entities import UserEntity
 from src.domain.users.schemas import CurrentUser, Response
-from src.domain.users.repository import UserRepository
+from src.application.port.user_repository import UserRepository
 from src.utils.exceptions import UserNotFoundException
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.domain.user.service")
 
@@ -33,7 +33,6 @@ class UserService:
             tenant_id=tenant_id,
             username=user.username,
             email=user.email,
-            organisation=user.organisation,
             created_at=now,
             updated_at=now,
             status=UserStatus.CREATED,
@@ -83,7 +82,6 @@ class UserService:
             # Modulate user details
             db_user.username = user.username
             db_user.email = user.email
-            db_user.organisation = user.organisation
             db_user.mark_updated()
 
             # Update user information
