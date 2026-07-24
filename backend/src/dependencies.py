@@ -57,13 +57,16 @@ def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository
 
 
 def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
-    return MinioStorage(
+    storage = MinioStorage(
         client=client,
         bucket=settings.minio_bucket_name,
         sse_key=SseCustomerKey(
             key=base64.b64decode(settings.minio_sse_customer_key)
         ),  # string to byte code
     )
+    storage.create_bucket()  # TODO: Move to CI/CD pipeline
+    return storage
+
 
 # Define dependencies for services
 def get_document_service(
