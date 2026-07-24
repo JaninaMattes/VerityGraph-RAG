@@ -10,7 +10,7 @@ from src.dependencies import (
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.schemas import DeleteResponse, URLResponse
 from src.domain.documents.service import DocumentService
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 
 logger = get_logger("api-backend.routers.document")

@@ -2,7 +2,7 @@ from uuid import UUID
 from fastapi import status
 
 from src.domain.tenants.schemas import CreationResponse, TenantResponse
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 from src.api.router import router
 
 logger = get_logger("api-backend.routers.tenant")

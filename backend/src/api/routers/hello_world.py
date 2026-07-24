@@ -1,5 +1,5 @@
 from src.api.router import router
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.routers.hello-world")
 
