@@ -2,7 +2,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.infrastructure.database.postgres.engine import async_engine
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.infrastructure.postgres")
 
