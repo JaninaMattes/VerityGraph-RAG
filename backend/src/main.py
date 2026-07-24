@@ -2,14 +2,14 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from src.api.routers import document, health, hello_world, tenant, user
+from src.core.config import get_settings
+from src.core.logger import get_logger, setup_logging
 from src.utils.exceptions import (
     DocumentNotFoundException,
     TenantNotFoundException,
     UserNotFoundException,
 )
-from src.api.routers import hello_world, health, user, tenant, document
-from src.core.logger import get_logger, setup_logging
-from src.core.config import get_settings
 
 # Initialization before FastAPI constructed
 setup_logging(log_level="INFO")
