@@ -1,17 +1,18 @@
 from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.utils.exceptions import UserNotFoundException
+from src.core.logger import get_logger
+from src.domain.users.entities import UserEntity
+from src.domain.users.repository import UserRepository
 from src.infrastructure.database.postgres.mapper.user import UserMapper
 from src.infrastructure.database.postgres.models.user import User
-from src.domain.users.entities import UserEntity
-from src.application.port.user_repository import UserRepository
-from src.core.logger import get_logger
+from src.utils.exceptions import PostgreSQLOperationError, UserNotFoundException
 
 logger = get_logger("api-backend.infra.postgres.user")
 
 
-class PostgresTenantRepository(UserRepository):
+class PostgresUserRepository(UserRepository):
     def __init__(
         self,
         session: AsyncSession,
@@ -30,12 +31,14 @@ class PostgresTenantRepository(UserRepository):
             await self.session.commit()
             await self.session.refresh(db_user)
         except Exception as e:
-            logger.error(
-                f"Failed to create new user with ID {user.user_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to create new user with ID '{user.user_id}' in database!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL Repository Error",
+                f"Failed to create new user with ID '{user.user_id}' in database!",
+            ) from e
 
         return UserMapper.to_entity(db_user)  # after rerfesh
 
@@ -51,12 +54,14 @@ class PostgresTenantRepository(UserRepository):
             await self.session.commit()
             await self.session.refresh(merged_user)
         except Exception as e:
-            logger.error(
-                f"Failed to update user with ID {user.user_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to update user with ID '{user.user_id}' in database!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL Repository Error",
+                f"Failed to update user with ID '{user.user_id}' in database!",
+            ) from e
 
         return UserMapper.to_entity(merged_user)  # after refresh
 
@@ -64,12 +69,14 @@ class PostgresTenantRepository(UserRepository):
         try:
             db_user = await self.session.get(User, user_id)
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve user with ID {user_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to get user with ID '{user_id}' from database!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL Repository Error",
+                f"Failed to get user with ID '{user_id}' from database!",
+            ) from e
 
         if db_user is None:
             raise UserNotFoundException(
@@ -91,11 +98,13 @@ class PostgresTenantRepository(UserRepository):
             await self.session.delete(merged_user)
             await self.session.commit()
         except Exception as e:
-            logger.error(
-                f"Failed to delete tenant with ID {user.user_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to delete user with ID '{user.user_id}' in database!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL Repository Error",
+                f"Failed to delete user with ID '{user.user_id}' in database!",
+            ) from e
 
         return UserMapper.to_entity(merged_user)

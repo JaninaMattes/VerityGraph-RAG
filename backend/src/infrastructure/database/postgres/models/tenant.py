@@ -1,14 +1,14 @@
-from datetime import datetime
 import typing
 import uuid
+from datetime import datetime
+
 from sqlalchemy import (
-    DateTime,
     UUID,
+    DateTime,
     Enum,
     Index,
     String,
     func,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,8 +16,8 @@ from src.infrastructure.database.postgres.models.base import Base
 from src.shared.enums import TenantStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User
     from .document import Document
+    from .user import User
 
 
 class Tenant(Base):
@@ -26,16 +26,14 @@ class Tenant(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
-        server_default=text("gen_random_uuid()"),  # server-side responsiblity
+        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
-
     # Relationships
-    documents: Mapped[list["Document"] | None] = relationship(
+    documents: Mapped[list[Document] | None] = relationship(
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
-
-    employees: Mapped[list["User"] | None] = relationship(
+    users: Mapped[list[User] | None] = relationship(
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
@@ -55,13 +53,9 @@ class Tenant(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None, server_default=None
-    )
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        default=None,
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
+
     __table_args__ = (
         Index(
             "idx_tenants_organisation",

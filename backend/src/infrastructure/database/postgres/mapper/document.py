@@ -1,11 +1,12 @@
-from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.dataclasses import DocumentChecksum, StorageKey
+from src.domain.documents.entities import DocumentEntity
 from src.infrastructure.database.postgres.models.document import Document
 
 
 class DocumentMapper:
     @staticmethod
     def to_model(entity: DocumentEntity) -> Document:
+        checksum = entity.checksum.value if entity.checksum else None
         return Document(
             document_id=entity.document_id,
             tenant_id=entity.tenant_id,
@@ -18,7 +19,7 @@ class DocumentMapper:
             storage_provider=entity.storage_provider,
             version_id=entity.version_id,
             etag=entity.etag,
-            checksum=entity.checksum.value,  # string
+            checksum=checksum,  # string
             size_bytes=entity.size_bytes,
             status=entity.status,
             created_at=entity.created_at,
@@ -30,6 +31,7 @@ class DocumentMapper:
 
     @staticmethod
     def to_entity(model: Document) -> DocumentEntity:
+        checksum = DocumentChecksum.from_hex(model.checksum) if model.checksum else None
         return DocumentEntity(
             document_id=model.document_id,
             tenant_id=model.tenant_id,
@@ -42,7 +44,7 @@ class DocumentMapper:
             storage_provider=model.storage_provider,
             version_id=model.version_id,
             etag=model.etag,
-            checksum=DocumentChecksum.from_hex(model.checksum),
+            checksum=checksum,
             size_bytes=model.size_bytes,
             status=model.status,
             created_at=model.created_at,

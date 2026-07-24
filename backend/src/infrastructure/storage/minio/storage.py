@@ -3,15 +3,15 @@ from datetime import timedelta
 from minio import Minio, S3Error
 from minio.sse import SseCustomerKey
 
-from src.utils.exceptions import StorageOperationError
+from src.core.logger import get_logger
 from src.domain.documents.dataclasses import (
     DocumentChecksum,
     DocumentStream,
     StorageKey,
     StoredFile,
 )
-from src.application.port.storage_provider import StorageProvider
-from src.core.logger import get_logger
+from src.infrastructure.storage.provider import StorageProvider
+from src.utils.exceptions import StorageOperationError
 
 logger = get_logger("api-backend.infra.minio")
 
@@ -50,11 +50,13 @@ class MinioStorage(StorageProvider):
                 extra_query_params={"response-content-type": "application/json"},
             )
         except S3Error as e:
-            logger.error(
-                f"Failed to create presigned URL for '{storage_key}' with MinIO: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to generate presigned upload URL for '{storage_key}' with MinIO!",
             )
-            raise
+            raise StorageOperationError(
+                "MinIO Storage Error",
+                f"Failed to generate presigned upload URL for '{storage_key}' with MinIO!",
+            ) from e
 
     def create_download_url(
         self, storage_key: StorageKey, expires_at: timedelta
@@ -70,11 +72,13 @@ class MinioStorage(StorageProvider):
                 expires=expires_at,
             )
         except S3Error as e:
-            logger.error(
-                f"Failed to create presigned URL for '{storage_key}' with MinIO: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to generate presigned download URL for '{storage_key}' with MinIO!",
             )
-            raise
+            raise StorageOperationError(
+                "MinIO Storage Error",
+                f"Failed to generate presigned download URL for '{storage_key}' with MinIO!",
+            ) from e
 
     def create_delete_url(self, storage_key: StorageKey, expires_at: timedelta) -> str:
         """Get presigned URL string to delete 'bucket-object' in MinIO bucket
@@ -88,11 +92,13 @@ class MinioStorage(StorageProvider):
                 expires=expires_at,
             )
         except S3Error as e:
-            logger.error(
-                f"Failed to create presigned URL for '{storage_key}' with MinIO: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to generate presigned URL for '{storage_key}' with MinIO!",
             )
-            raise
+            raise StorageOperationError(
+                "MinIO Storage Error",
+                f"Failed to generate presigned URL for '{storage_key}' with MinIO!",
+            ) from e
 
     def store_file(
         self,
@@ -143,13 +149,14 @@ class MinioStorage(StorageProvider):
             )
 
         except S3Error as e:
-            logger.error(
-                f"Failed to upload binary file '{storage_key}' to MinIO: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to upload binary file '{storage_key}' from MinIO!",
             )
             raise StorageOperationError(
-                "MinIO Storage Error", f"Failed to upload {storage_key}"
+                "MinIO Storage Error",
+                f"Failed to upload binary file '{storage_key}' from MinIO!",
             ) from e
+
 
     def delete_file(
         self,
@@ -165,8 +172,10 @@ class MinioStorage(StorageProvider):
                 },
             )
         except S3Error as e:
-            logger.error(
-                f"Failed to remove file '{storage_key}' from MinIO storage: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to remove binary file '{storage_key}' from MinIO!",
             )
-            raise
+            raise StorageOperationError(
+                "MinIO Storage Error",
+                f"Failed to remove binary file '{storage_key}' from MinIO!",
+            ) from e

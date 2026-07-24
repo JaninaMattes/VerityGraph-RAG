@@ -1,17 +1,17 @@
-from datetime import datetime
 import typing
 import uuid
+from datetime import datetime
+
 from sqlalchemy import (
+    UUID,
+    BigInteger,
     DateTime,
     Enum,
     ForeignKey,
     Index,
-    Integer,
     String,
     Text,
-    UUID,
     func,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,10 +28,12 @@ class Document(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
-        server_default=text("gen_random_uuid()"),  # server-side responsiblity
+        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.tenant_id"))
-    tenant: Mapped["Tenant"] = relationship(back_populates="documents")
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenant.tenant_id", ondelete="CASCADE")
+    )
+    tenant: Mapped[Tenant] = relationship(back_populates="documents")
 
     # File details
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -46,15 +48,15 @@ class Document(Base):
     storage_provider: Mapped[StorageProvider | None] = mapped_column(
         Enum(StorageProvider, native_enum=True)
     )
-    version_id: Mapped[str | None] = mapped_column(Integer)
+    version_id: Mapped[str | None] = mapped_column(String(255))
     etag: Mapped[str | None] = mapped_column(String(55))
 
-    checksum: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, default=-1)  # -1 unknown size
+    checksum: Mapped[str | None] = mapped_column(String(64), index=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=-1)  # -1 unknown size
 
     # Status information
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus, native_enum=True), default=DocumentStatus.UPLOADED
+        Enum(DocumentStatus, native_enum=True), default=DocumentStatus.PENDING
     )
 
     # Audit information
@@ -64,13 +66,8 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=None, onupdate=func.now()
-    )
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        default=None,
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
     __table_args__ = (
         Index(
