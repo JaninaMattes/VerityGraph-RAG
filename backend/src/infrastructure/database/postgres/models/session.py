@@ -1,8 +1,8 @@
-from datetime import datetime
 import typing
 import uuid
+from datetime import datetime
 
-from sqlalchemy import UUID, DateTime, ForeignKey, Index, Text, func, text
+from sqlalchemy import UUID, DateTime, ForeignKey, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.models.base import Base
@@ -17,35 +17,36 @@ class Session(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
-        server_default=text("gen_random_uuid()"),  # server-side responsiblity
+        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
+    )
+    # Foreign key
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE")
     )
 
-    # Foreign key
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.user_id"))
-
-    ip_address: Mapped[str] = mapped_column(Text, nullable=False)
-
     # Relationship
-    user: Mapped["User"] = relationship(back_populates="user_sessions")
+    user: Mapped[User] = relationship(back_populates="user_sessions")
 
     # Auth
-    refresh_token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    ip_address: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_hash: Mapped[str] = mapped_column(
+        Text, unique=True, index=True, nullable=False
+    )
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-
     last_used_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=None, onupdate=func.now()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=None, onupdate=func.now()
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index(

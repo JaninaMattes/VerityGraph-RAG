@@ -1,13 +1,14 @@
 # SQLAlchemy implementation
 from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database.postgres.mapper.document import DocumentMapper
-from src.utils.exceptions import DocumentNotFoundException
-from src.infrastructure.database.postgres.models.document import Document
-from src.domain.documents.entities import DocumentEntity
-from src.application.port.document_repository import DocumentRepository
 from src.core.logger import get_logger
+from src.domain.documents.entities import DocumentEntity
+from src.domain.documents.repository import DocumentRepository
+from src.infrastructure.database.postgres.mapper.document import DocumentMapper
+from src.infrastructure.database.postgres.models.document import Document
+from src.utils.exceptions import DocumentNotFoundException, PostgreSQLOperationError
 
 logger = get_logger("api-backend.infra.postgres.doc")
 
@@ -29,12 +30,14 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.commit()
             await self.session.refresh(db_document)
         except Exception as e:
-            logger.error(
-                f"Failed to create new document with ID {document.document_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to create new document metadata entry with ID {document.document_id}!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL DB Error",
+                f"Failed to create new document metadata entry with ID {document.document_id}!",
+            ) from e
 
         return DocumentMapper.to_entity(db_document)  # refresh
 
@@ -51,12 +54,14 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.commit()
             await self.session.refresh(merged_document)
         except Exception as e:
-            logger.error(
-                f"Failed to update document with ID {document.document_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to update document metadata with ID {document.document_id}!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL DB Error",
+                f"Failed to update document metadata with ID {document.document_id}!",
+            ) from e
 
         return DocumentMapper.to_entity(merged_document)  # refresh
 
@@ -65,12 +70,14 @@ class PostgresDocumentRepository(DocumentRepository):
         try:
             db_document = await self.session.get(Document, document_id)
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve document with ID {document_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to get document metadata with ID {document_id}!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL DB Error",
+                f"Failed to get document metadata with ID {document_id}!",
+            ) from e
 
         if db_document is None:
             raise DocumentNotFoundException(
@@ -91,11 +98,13 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.delete(merged_document)
             await self.session.commit()
         except Exception as e:
-            logger.error(
-                f"Failed to delete document with ID {document.document_id}! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to delete document metadata with ID {document.document_id}!",
             )
             await self.session.rollback()
-            raise
+            raise PostgreSQLOperationError(
+                "PostgreSQL DB Error",
+                f"Failed to delete document metadata with ID {document.document_id}!",
+            ) from e
 
         return DocumentMapper.to_entity(merged_document)
