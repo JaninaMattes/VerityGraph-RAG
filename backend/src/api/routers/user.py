@@ -3,7 +3,7 @@ from fastapi import status
 
 from src.domain.auth.schemas import LoginResponse, RegisterResponse, UserResponse
 from src.api.router import router
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.routers.user")
 
