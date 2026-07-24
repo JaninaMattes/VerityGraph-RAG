@@ -3,11 +3,11 @@ import uuid
 
 from src.shared.enums import TenantStatus
 from src.utils.exceptions import TenantNotFoundException
+from src.application.port.tenant_repository import TenantRepository
 from src.domain.tenants.schemas import CurrentTenant, Response
 from src.domain.tenants.dataclasses import Tenant
 from src.domain.tenants.entities import TenantEntity
-from src.domain.tenants.repository import TenantRepository
-from src.utils.logger import get_logger
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.domain.tenant.service")
 
