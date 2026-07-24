@@ -5,8 +5,8 @@ from src.utils.exceptions import UserNotFoundException
 from src.infrastructure.database.postgres.mapper.user import UserMapper
 from src.infrastructure.database.postgres.models.user import User
 from src.domain.users.entities import UserEntity
-from src.domain.users.repository import UserRepository
-from src.utils.logger import get_logger
+from src.application.port.user_repository import UserRepository
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.infra.postgres.user")
 

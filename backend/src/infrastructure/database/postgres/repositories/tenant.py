@@ -5,8 +5,8 @@ from src.utils.exceptions import TenantNotFoundException
 from src.infrastructure.database.postgres.models.tenant import Tenant
 from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
 from src.domain.tenants.entities import TenantEntity
-from src.domain.tenants.repository import TenantRepository
-from src.utils.logger import get_logger
+from src.application.port.tenant_repository import TenantRepository
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.infra.postgres.tenant")
 

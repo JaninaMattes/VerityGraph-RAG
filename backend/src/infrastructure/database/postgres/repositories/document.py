@@ -6,8 +6,8 @@ from src.infrastructure.database.postgres.mapper.document import DocumentMapper
 from src.utils.exceptions import DocumentNotFoundException
 from src.infrastructure.database.postgres.models.document import Document
 from src.domain.documents.entities import DocumentEntity
-from src.domain.documents.repository import DocumentRepository
-from src.utils.logger import get_logger
+from src.application.port.document_repository import DocumentRepository
+from src.core.logger import get_logger
 
 logger = get_logger("api-backend.infra.postgres.doc")
 
