@@ -7,9 +7,9 @@ from src.utils.exceptions import (
     TenantNotFoundException,
     UserNotFoundException,
 )
-from src.core.config import get_settings
 from src.api.routers import hello_world, health, user, tenant, document
-from src.utils.logger import get_logger, setup_logging
+from src.core.logger import get_logger, setup_logging
+from src.core.config import get_settings
 
 # Initialization before FastAPI constructed
 setup_logging(log_level="INFO")
