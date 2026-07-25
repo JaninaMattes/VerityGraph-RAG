@@ -1,4 +1,5 @@
 from uuid import UUID
+
 from pydantic import BaseModel
 
 from src.shared.enums import TenantStatus

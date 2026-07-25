@@ -1,17 +1,16 @@
-from typing import Annotated
 import uuid
-from fastapi import Depends, HTTPException, status
+from typing import Annotated
 
+from fastapi import Depends, HTTPException, status
 from src.api.router import router
+from src.core.logger import get_logger
 from src.dependencies import (
     get_current_user,
     get_document_service,
 )
 from src.domain.auth.dataclasses import Principal
-from src.domain.documents.schemas import DeleteResponse, URLResponse
+from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
 from src.domain.documents.service import DocumentService
-from src.core.logger import get_logger
-
 
 logger = get_logger("api-backend.routers.document")
 
@@ -29,13 +28,20 @@ async def create_upload_url(
     try:
         return await service.create_upload_url(tenant_id)
     except Exception as e:
-        logger.error(
-            f"Generation of presigned URL failure! Error: {e}", exc_info=True
+        logger.exception(
+            "Creation of presigned upload URL failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while generating the presigned upload URL.",
         ) from e
+
+@router.post("/documents/{document_id}/complete", status_code=status.HTTP_200_OK)
+async def create_metadata(
+    document_id: uuid.UUID,
+    service: DocServiceDep,
+    current_user: CurrentUserDep,
+) -> CreateResponse: ...
 
 
 @router.get(
@@ -51,8 +57,8 @@ async def create_download_url(
     try:
         return await service.create_download_url(document_id, tenant_id)
     except Exception as e:
-        logger.error(
-            f"Upload binary file execution failure: {e}", exc_info=True
+        logger.exception(
+            "Creation of presigned download URL failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -75,8 +81,8 @@ async def delete_documents(
         return await service.delete(document_id, tenant_id)
 
     except Exception as e:
-        logger.error(
-            f"Delete binary file execution failure: {e}", exc_info=True
+        logger.exception(
+            f"Deletion of document with ID {document_id} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

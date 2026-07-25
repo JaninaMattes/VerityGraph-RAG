@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import UserStatus
+from src.shared.enums import UserRole, UserStatus
 
 
 class UserEntity:
@@ -19,6 +19,7 @@ class UserEntity:
         tenant_id: UUID,
         username: str,
         email: str,
+        roles: list[UserRole],
         created_at: datetime,
         updated_at: datetime,
         deleted_at: datetime | None = None,
@@ -30,6 +31,7 @@ class UserEntity:
         self.tenant_id = tenant_id
         self.username = username
         self.email = email
+        self.roles = roles
 
         # Audit
         self.created_at = created_at
@@ -38,13 +40,16 @@ class UserEntity:
         self.deleted_by = deleted_by
         self.status = status
 
+    def mark_activated(self) -> None:
+        self.status = UserStatus.ACTIVE
+        self.updated_at = datetime.now(UTC)
+
     def mark_updated(self) -> None:
-        self.status = UserStatus.UPDATED
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def mark_deleted(self, tenant_id: UUID) -> None:
-        self.status = UserStatus.DELETED
-        self.deleted_at = datetime.now(timezone.utc)
+        self.status = UserStatus.DISABLED
+        self.deleted_at = datetime.now(UTC)
         self.deleted_by = tenant_id
 
     def __eq__(self, other: object) -> bool:

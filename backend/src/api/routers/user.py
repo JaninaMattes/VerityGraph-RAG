@@ -1,9 +1,9 @@
 from uuid import UUID
-from fastapi import status
 
-from src.domain.auth.schemas import LoginResponse, RegisterResponse, UserResponse
+from fastapi import status
 from src.api.router import router
 from src.core.logger import get_logger
+from src.domain.auth.schemas import LoginResponse, RegisterResponse, UserResponse
 
 logger = get_logger("api-backend.routers.user")
 

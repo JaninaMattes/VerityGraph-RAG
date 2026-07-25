@@ -35,28 +35,13 @@ class StorageKey:
         document_id: UUID,
         namespace: str = "documents",
         extension: str | None = None,
-    ) -> "StorageKey":
+    ):
         key = f"{tenant_id}/{namespace}/{document_id}"
 
         if extension:
             key += f".{extension.lstrip('.')}"
 
         return cls(key)
-
-
-@dataclass(slots=True, frozen=True)
-class StoredFile:
-    """
-    Result returned by the storage provider after a successful upload.
-    """
-
-    storage_key: StorageKey
-    mime_type: str
-    checksum: "DocumentChecksum"
-    size_bytes: int
-    bucket_name: str | None = None
-    version_id: str | None = None
-    etag: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,13 +53,28 @@ class DocumentChecksum:
     value: str
 
     @classmethod
-    def from_hex(cls, value: str) -> "DocumentChecksum":
+    def from_hex(cls, value: str):
         return cls(value.lower())
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "DocumentChecksum":
+    def from_bytes(cls, data: bytes):
         digest = sha256(data).hexdigest()
         return cls(digest)
 
     def __str__(self) -> str:
         return self.value
+
+
+@dataclass(slots=True, frozen=True)
+class StoredFile:
+    """
+    Result returned by the storage provider after a successful upload.
+    """
+
+    storage_key: StorageKey
+    mime_type: str
+    checksum: DocumentChecksum
+    size_bytes: int
+    bucket_name: str | None = None
+    version_id: str | None = None
+    etag: str | None = None

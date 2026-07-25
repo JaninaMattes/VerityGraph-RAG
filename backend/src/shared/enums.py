@@ -8,8 +8,31 @@ class StorageProvider(StrEnum):
     LOCAL = "local"
 
 
+class TenantStatus(StrEnum):
+    CREATED = "created"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+
+class UserStatus(StrEnum):
+    CREATED = "created"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class UserRole(StrEnum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+class CredentialStatus(StrEnum):
+    VALID = "valid"
+    INVALID = "invalid"
+    REVOKED = "revoked"
+
+
 class Language(StrEnum):
-    ENG = "english"
+    ENGLISH = "english"
 
 
 class DocumentType(StrEnum):
@@ -24,33 +47,9 @@ class DocumentType(StrEnum):
 
 
 class DocumentStatus(StrEnum):
+    PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
-    PENDING = "pending"
-    FAILED = "failed"
     READY = "ready"
-    DELETED = "deleted"
-    PURGED = "purged"
-
-
-class CredentialStatus(StrEnum):
-    VALID = "valid"
-    INVALID = "invalid"
-    REVOKED = "revoked"
-
-
-class UserStatus(StrEnum):
-    CREATED = "created"
-    UPDATED = "updated"
-    DELETED = "deleted"
-
-
-class UserRole(StrEnum):
-    ADMIN = "admin"
-    USER = "basic"
-
-
-class TenantStatus(StrEnum):
-    CREATED = "created"
-    UPDATED = "updated"
+    FAILED = "failed"
     DELETED = "deleted"
