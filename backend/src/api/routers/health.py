@@ -1,14 +1,13 @@
 from typing import Annotated
 
-from fastapi import Depends
-
-from src.api.router import router
+from fastapi import APIRouter, Depends
 from src.core.config import Settings
-from src.dependencies import get_settings
 from src.core.logger import get_logger
+from src.dependencies import get_settings
 
 logger = get_logger("api-backend.routers.health")
 
+router = APIRouter()
 
 @router.get("/info")
 async def info(settings: Annotated[Settings, Depends(get_settings)]):

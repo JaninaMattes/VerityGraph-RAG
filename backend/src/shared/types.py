@@ -1,6 +1,5 @@
 from src.shared.enums import DocumentType
 
-
 SUPPORTED_DOCUMENTS = {
     "application/pdf": DocumentType.PDF,
     "text/markdown": DocumentType.MARKDOWN,

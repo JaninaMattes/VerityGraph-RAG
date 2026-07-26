@@ -1,17 +1,17 @@
 # src/domain/documents/service.py
 import asyncio
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import UTC, datetime, timedelta
 
-from src.utils.exceptions import DocumentNotFoundException
-from src.application.port.document_repository import DocumentRepository
-from src.shared.enums import DocumentStatus
-from src.domain.documents.entities import DocumentEntity
-from src.domain.documents.dataclasses import DocumentStream, StorageKey
-from src.domain.documents.schemas import CreateResponse, URLResponse, DeleteResponse
-from src.application.port.storage_provider import StorageProvider
-from src.workflows.ingestion.workflow import WorkflowClient
 from src.core.logger import get_logger
+from src.domain.documents.dataclasses import DocumentStream, StorageKey
+from src.domain.documents.entities import DocumentEntity
+from src.domain.documents.repository import DocumentRepository
+from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
+from src.infrastructure.storage.provider import StorageProvider
+from src.shared.enums import DocumentStatus
+from src.utils.exceptions import DocumentNotFoundException, DocumentServiceError
+from src.workflows.ingestion.workflow import WorkflowClient
 
 logger = get_logger("api-backend.domain.doc.service")
 
@@ -36,27 +36,35 @@ class DocumentService:
     ) -> URLResponse:
         """Create presigned URL to upload file to S3 bucket."""
         document_id = uuid.uuid4()
-        expires_at = timedelta(minutes=30)  # 30 mins expiration
+
         storage_key = StorageKey.document(
             tenant_id=tenant_id,
             document_id=document_id,
             namespace=namespace,
         )
+
         try:
+            # Create presigned URL
+            expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_upload_url,
                 storage_key=storage_key,
                 expires_at=expires_at,
             )
             return URLResponse(
-                url=presigned_url, storage_key=storage_key.value, expires_at=expires_at
+                document_id=document_id,
+                url=presigned_url,
+                storage_key=storage_key.value,
+                expires_at=expires_at,
             )
         except Exception as e:
-            logger.error(
-                f"Failed to generate presigned upload URL for tenant {tenant_id} to blob storage! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to generate presigned upload URL for tenant '{tenant_id}' to blob storage!",
             )
-            raise
+            raise DocumentServiceError(
+                "Document Service Error",
+                f"Failed to generate presigned upload URL for tenant '{tenant_id}' to blob storage!",
+            ) from e
 
     async def create_download_url(
         self,
@@ -78,14 +86,19 @@ class DocumentService:
                 expires_at=expires_at,
             )
             return URLResponse(
-                url=presigned_url, storage_key=storage_key.value, expires_at=expires_at
+                document_id=document_id,
+                url=presigned_url,
+                storage_key=storage_key.value,
+                expires_at=expires_at,
             )
         except Exception as e:
-            logger.error(
-                f"Failed to generate presigned download URL for tenant {tenant_id} to blob storage! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to generate presigned download URL for tenant '{tenant_id}' to blob storage!",
             )
-            raise
+            raise DocumentServiceError(
+                "Document Service Error",
+                f"Failed to generate presigned download URL for tenant '{tenant_id}' to blob storage!",
+            ) from e
 
     async def create(
         self,
@@ -106,14 +119,16 @@ class DocumentService:
                 self.storage.store_file, file=file, storage_key=storage_key
             )
         except Exception as e:
-            logger.error(
-                f"Failed to upload document {file.filename} to blob storage! Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to upload document '{file.filename}' to blob storage!",
             )
-            raise
+            raise DocumentServiceError(
+                "Document Service Error",
+                f"Failed to upload document '{file.filename}' to blob storage!",
+            ) from e
 
         # Persist metadata
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entity = DocumentEntity(
             document_id=document_id,
             tenant_id=tenant_id,
@@ -140,11 +155,13 @@ class DocumentService:
             )
         except Exception as e:
             await asyncio.to_thread(self.storage.delete_file, storage_key=storage_key)
-            logger.error(
-                f"Failed to process upload workflow. Cleaning up storage. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to create document '{file.filename}' metadata in DB!",
             )
-            raise
+            raise DocumentServiceError(
+                "Document Service Error",
+                f"Failed to create document '{file.filename}' metadata in DB!",
+            ) from e
 
     async def delete(
         self, document_id: uuid.UUID, tenant_id: uuid.UUID
@@ -172,8 +189,10 @@ class DocumentService:
                 document_id=db_document.document_id, status=db_document.status
             )
         except Exception as e:
-            logger.error(
-                f"Failed to process removal workflow. Cleaning up storage. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to process delete workflow for document {document_id}!",
             )
-            raise
+            raise DocumentServiceError(
+                "Document Service Error",
+                f"Failed to process delete workflow for document {document_id}!",
+            ) from e

@@ -1,11 +1,13 @@
 from uuid import UUID
-from fastapi import status
 
-from src.domain.tenants.schemas import CreationResponse, TenantResponse
+from fastapi import APIRouter, status
 from src.core.logger import get_logger
-from src.api.router import router
+from src.domain.tenants.schemas import CreationResponse, TenantResponse
 
 logger = get_logger("api-backend.routers.tenant")
+
+
+router = APIRouter()
 
 
 @router.post("/tenants/register", status_code=status.HTTP_200_OK)

@@ -1,21 +1,21 @@
 import base64
-from typing import Annotated
 import uuid
+from typing import Annotated
 
 from fastapi import Depends
 from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.workflows.client import WorkflowClient
-from src.infrastructure.storage.minio.storage import MinioStorage
+from src.core.config import Settings, get_settings
+from src.domain.auth.dataclasses import Principal
+from src.domain.documents.service import DocumentService
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
 from src.infrastructure.database.postgres.session import get_db_session
-from src.domain.documents.service import DocumentService
-from src.domain.auth.dataclasses import Principal
-from src.core.config import Settings, get_settings
+from src.infrastructure.storage.minio.storage import MinioStorage
+from src.workflows.client import WorkflowClient
 
 
 # Dummy user authentication dependency

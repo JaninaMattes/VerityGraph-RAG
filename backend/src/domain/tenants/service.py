@@ -1,13 +1,13 @@
-from datetime import datetime, timezone
 import uuid
+from datetime import UTC, datetime
 
-from src.shared.enums import TenantStatus
-from src.utils.exceptions import TenantNotFoundException
-from src.application.port.tenant_repository import TenantRepository
-from src.domain.tenants.schemas import CurrentTenant, Response
+from src.core.logger import get_logger
 from src.domain.tenants.dataclasses import Tenant
 from src.domain.tenants.entities import TenantEntity
-from src.core.logger import get_logger
+from src.domain.tenants.repository import TenantRepository
+from src.domain.tenants.schemas import CurrentTenant, Response
+from src.shared.enums import TenantStatus
+from src.utils.exceptions import TenantNotFoundException, TenantServiceError
 
 logger = get_logger("api-backend.domain.tenant.service")
 
@@ -25,7 +25,7 @@ class TenantService:
         tenant_id = uuid.uuid4()
 
         # Persist metadata
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         entity = TenantEntity(
             tenant_id=tenant_id,
             organisation=tenant.organisation,
@@ -37,11 +37,13 @@ class TenantService:
             db_tenant = await self.repository.create(entity)
             return Response(tenant_id=db_tenant.tenant_id, status=db_tenant.status)
         except Exception as e:
-            logger.error(
-                f"Failed to create new tenant {tenant_id}. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to create tenant entry '{tenant_id}' in DB!",
             )
-            raise
+            raise TenantServiceError(
+                "Tenant Service Error",
+                f"Failed to create tenant entry '{tenant_id}' in DB!",
+            ) from e
 
     async def get(self, tenant_id: uuid.UUID) -> CurrentTenant:
         try:
@@ -58,11 +60,13 @@ class TenantService:
                 status=db_tenant.status,
             )
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve tenant {tenant_id}. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to retrieve tenant with ID '{tenant_id}' from database!",
             )
-            raise
+            raise TenantServiceError(
+                "Tenant Service Error",
+                f"Failed to retrieve tenant with ID '{tenant_id}' from database!",
+            ) from e
 
     async def update(self, tenant: Tenant, tenant_id: uuid.UUID) -> Response:
         try:
@@ -84,11 +88,13 @@ class TenantService:
             return Response(tenant_id=updated.tenant_id, status=db_tenant.status)
 
         except Exception as e:
-            logger.error(
-                f"Failed to update tenant {tenant_id}. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to update tenant with ID '{tenant_id}' in database!",
             )
-            raise
+            raise TenantServiceError(
+                "Tenant Service Error",
+                f"Failed to update tenant with ID '{tenant_id}' in database!",
+            ) from e
 
     async def delete(self, tenant_id: uuid.UUID) -> Response:
         try:
@@ -106,8 +112,10 @@ class TenantService:
             )
 
         except Exception as e:
-            logger.error(
-                f"Failed to delete tenant {tenant_id}. Error: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Failed to delete tenant with ID '{tenant_id}' in database!",
             )
-            raise
+            raise TenantServiceError(
+                "Tenant Service Error",
+                f"Failed to delete tenant with ID '{tenant_id}' in database!",
+            ) from e
