@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import UserStatus
+from src.shared.enums import UserRole, UserStatus
 
 
 class UserEntity:
@@ -19,7 +19,7 @@ class UserEntity:
         tenant_id: UUID,
         username: str,
         email: str,
-        # roles: list[UserRole],
+        roles: list[UserRole],
         created_at: datetime,
         updated_at: datetime,
         deleted_at: datetime | None = None,
@@ -31,7 +31,7 @@ class UserEntity:
         self.tenant_id = tenant_id
         self.username = username
         self.email = email
-        # self.roles = roles
+        self.roles = roles
 
         # Audit
         self.created_at = created_at

@@ -14,7 +14,7 @@ from src.shared.enums import (
 )
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant
+    from .tenant import Tenant  # noqa: TC004
 
 
 class Document(Base):
@@ -30,7 +30,7 @@ class Document(Base):
     )
 
     # Relationship
-    tenant: Mapped["Tenant"] = relationship(back_populates="documents")
+    tenant: Mapped[Tenant] = relationship(back_populates="documents")
 
     # File details
     filename: Mapped[str] = mapped_column(String(255))

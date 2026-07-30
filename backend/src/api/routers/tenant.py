@@ -28,7 +28,7 @@ async def register(
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred while creating new tenant entry for organisation {organisation}.",
+            detail="An internal error occurred while creating new tenant entry in the database.",
         ) from e
 
 
@@ -41,11 +41,11 @@ async def read_tenant(
         return await service.get(tenant_id=tenant_id)
     except Exception as e:
         logger.exception(
-            f"Retrieval of tenant with ID {tenant_id} failed!",
+            f"Retrieval of tenant with ID '{tenant_id}' failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred while retrieving tenant with ID {tenant_id}.",
+            detail="An internal error occurred while searching for tenant.",
         ) from e
 
 
@@ -55,12 +55,12 @@ async def revoke_tenant(
     service: TenantServiceDep,
 ) -> TenantResponse:
     try:
-        return await service.delete(tenant_id=tenant_id)
+        return await service.deactivate(tenant_id=tenant_id)
     except Exception as e:
         logger.exception(
-            f"Removal of tenant with ID {tenant_id} failed!",
+            f"Deactivation of tenant with ID '{tenant_id}' failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An internal error occurred while removing tenant with ID {tenant_id}.",
+            detail="An internal error occurred while removing a tenant from database.",
         ) from e

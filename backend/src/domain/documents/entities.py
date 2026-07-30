@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import DocumentStatus, LanguageType
+from src.domain.documents.dataclasses import DocumentChecksum, StorageKey
+from src.shared.enums import DocumentStatus, DocumentType, LanguageType, StorageProvider
 
 
 class DocumentEntity:
@@ -20,17 +21,17 @@ class DocumentEntity:
         document_id: UUID,
         tenant_id: UUID,
         filename: str,
-        # mime_type: str | None = None,
-        # document_type: DocumentType | None = None,
-        # language: LanguageType | None = None,
-        # bucket_name: str | None = None,
-        # storage_key: StorageKey,
-        # storage_provider: StorageProvider | None = None,
-        # version_id: str | None = None,
-        # etag: str | None = None,
-        # checksum: DocumentChecksum | None = None,
-        # size_bytes: int,
-        # status: DocumentStatus,
+        mime_type: str | None = None,
+        document_type: DocumentType | None = None,
+        language: LanguageType | None = None,
+        bucket_name: str | None = None,
+        storage_key: StorageKey,
+        storage_provider: StorageProvider | None = None,
+        version_id: str | None = None,
+        etag: str | None = None,
+        checksum: DocumentChecksum | None = None,
+        size_bytes: int,
+        status: DocumentStatus,
         created_at: datetime,
         updated_at: datetime,
         # deleted_at: datetime | None = None,
@@ -65,6 +66,7 @@ class DocumentEntity:
     def mark_processing(self) -> None:
         self.status = DocumentStatus.PROCESSING
         self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
 
     def mark_ready(
         self,
@@ -76,13 +78,16 @@ class DocumentEntity:
         self.status = DocumentStatus.READY
         self.language = language
         self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
 
     def mark_failed(self) -> None:
         self.status = DocumentStatus.FAILED
         self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
 
     def mark_deleted(self, tenant_id: UUID) -> None:
         self.status = DocumentStatus.DELETED
+        self.deleted_at = datetime.now(UTC)
         self.deleted_at = datetime.now(UTC)
         self.deleted_by = tenant_id
 
