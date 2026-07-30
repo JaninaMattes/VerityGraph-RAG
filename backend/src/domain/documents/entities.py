@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from backend.src.domain.documents.dataclasses import DocumentChecksum, StorageKey
+from src.domain.documents.dataclasses import DocumentChecksum, StorageKey
 from src.shared.enums import DocumentStatus, DocumentType, LanguageType, StorageProvider
 
 
