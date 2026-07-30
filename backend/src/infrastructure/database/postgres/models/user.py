@@ -16,6 +16,7 @@ if typing.TYPE_CHECKING:
 
 class User(Base):
     __tablename__ = "users"
+    __tablename__ = "users"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
@@ -49,6 +50,8 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 

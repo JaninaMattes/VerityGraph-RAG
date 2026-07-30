@@ -1,6 +1,9 @@
 import uuid
+import uuid
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from src.core.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.core.logger import get_logger
 from src.dependencies import (
@@ -9,10 +12,12 @@ from src.dependencies import (
 )
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
+from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
 from src.domain.documents.service import DocumentService
 
 logger = get_logger("api-backend.routers.document")
 
+router = APIRouter()
 router = APIRouter()
 
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
@@ -35,6 +40,15 @@ async def create_upload_url(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while generating the presigned upload URL.",
         ) from e
+
+
+@router.post("/documents/{document_id}/complete", status_code=status.HTTP_200_OK)
+async def create_metadata(
+    document_id: uuid.UUID,
+    service: DocServiceDep,
+    current_user: CurrentUserDep,
+) -> CreateResponse: ...
+
 
 @router.post("/documents/{document_id}/complete", status_code=status.HTTP_200_OK)
 async def create_metadata(

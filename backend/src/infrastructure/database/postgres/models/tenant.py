@@ -22,6 +22,7 @@ class Tenant(Base):
         UUID,
         primary_key=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
+        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     # Relationships
     documents: Mapped[list["Document"] | None] = relationship(back_populates="tenant")

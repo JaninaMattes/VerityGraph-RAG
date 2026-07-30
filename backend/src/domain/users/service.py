@@ -1,6 +1,8 @@
 import uuid
 from datetime import UTC, datetime
+from datetime import UTC, datetime
 
+from src.core.logger import get_logger
 from src.core.logger import get_logger
 from src.domain.users.dataclasses import User
 from src.domain.users.entities import UserEntity
@@ -27,11 +29,13 @@ class UserService:
 
         # Persist metadata
         now = datetime.now(UTC)
+        now = datetime.now(UTC)
         entity = UserEntity(
             user_id=user_id,
             tenant_id=tenant_id,
             username=user.username,
             email=user.email,
+            roles=[UserRole.USER],
             roles=[UserRole.USER],
             created_at=now,
             updated_at=now,
@@ -44,7 +48,13 @@ class UserService:
         except Exception as e:
             logger.exception(
                 f"Failed to create new user with ID '{user_id}' in database!",
+            logger.exception(
+                f"Failed to create new user with ID '{user_id}' in database!",
             )
+            raise UserServiceError(
+                "Tenant Service Error",
+                f"Failed to create new user with ID '{user_id}' in database!",
+            ) from e
             raise UserServiceError(
                 "Tenant Service Error",
                 f"Failed to create new user with ID '{user_id}' in database!",
@@ -66,7 +76,13 @@ class UserService:
         except Exception as e:
             logger.exception(
                 f"Failed to get user with ID '{user_id}' from database!",
+            logger.exception(
+                f"Failed to get user with ID '{user_id}' from database!",
             )
+            raise UserServiceError(
+                "Tenant Service Error",
+                f"Failed to get user with ID '{user_id}' from database!",
+            ) from e
             raise UserServiceError(
                 "Tenant Service Error",
                 f"Failed to get user with ID '{user_id}' from database!",
@@ -95,7 +111,13 @@ class UserService:
         except Exception as e:
             logger.exception(
                 f"Failed to update user with ID '{user_id}' in database!",
+            logger.exception(
+                f"Failed to update user with ID '{user_id}' in database!",
             )
+            raise UserServiceError(
+                "Tenant Service Error",
+                f"Failed to update user with ID '{user_id}' in database!",
+            ) from e
             raise UserServiceError(
                 "Tenant Service Error",
                 f"Failed to update user with ID '{user_id}' in database!",
@@ -117,6 +139,13 @@ class UserService:
             )
 
         except Exception as e:
+            logger.exception(
+                f"Failed to delete user with ID '{user_id}' from database!",
+            )
+            raise UserServiceError(
+                "Tenant Service Error",
+                f"Failed to delete user with ID '{user_id}' from database!",
+            ) from e
             logger.exception(
                 f"Failed to delete user with ID '{user_id}' from database!",
             )

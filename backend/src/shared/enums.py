@@ -26,6 +26,29 @@ class UserRole(StrEnum):
 
 
 class CredentialStatus(StrEnum):
+    VALID = "valid"
+    INVALID = "invalid"
+    REVOKED = "revoked"
+
+
+class TenantStatus(StrEnum):
+    CREATED = "created"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+
+class UserStatus(StrEnum):
+    CREATED = "created"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class UserRole(StrEnum):
+    ADMIN = "admin"
+    USER = "user"
+
+
+class CredentialStatus(StrEnum):
     CREATED = "created"
     VALID = "valid"
     REVOKED = "revoked"
@@ -48,8 +71,10 @@ class DocumentType(StrEnum):
 
 class DocumentStatus(StrEnum):
     PENDING = "pending"
+    PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
+    READY = "ready"
     READY = "ready"
     FAILED = "failed"
     DELETED = "deleted"
