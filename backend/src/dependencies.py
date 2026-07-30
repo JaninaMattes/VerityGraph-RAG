@@ -11,11 +11,15 @@ from src.core.config import Settings, get_settings
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
+from src.domain.users.service import UserService
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
 from src.infrastructure.database.postgres.repositories.tenant import (
     PostgresTenantRepository,
+)
+from src.infrastructure.database.postgres.repositories.user import (
+    PostgresUserRepository,
 )
 from src.infrastructure.database.postgres.session import get_db_session
 from src.infrastructure.storage.minio.storage import MinioStorage
@@ -56,11 +60,16 @@ MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 
 
 # Dependency provider factories
-def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
-    return PostgresDocumentRepository(session=session)
-
 def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
     return PostgresTenantRepository(session=session)
+
+
+def get_user_repository(session: DbSessionDep) -> PostgresUserRepository:
+    return PostgresUserRepository(session=session)
+
+
+def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
+    return PostgresDocumentRepository(session=session)
 
 def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
@@ -87,3 +96,9 @@ def get_tenant_service(
     repository: Annotated[PostgresTenantRepository, Depends(get_tenant_repository)],
 ) -> TenantService:
     return TenantService(repository=repository)
+
+
+def get_user_service(
+    repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
+) -> UserService:
+    return UserService(repository=repository)
