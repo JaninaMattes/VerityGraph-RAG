@@ -1,6 +1,6 @@
 # import typing
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import UUID, DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,6 +17,7 @@ class Tenant(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
+        index=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     # Relationships
@@ -32,10 +33,12 @@ class Tenant(Base):
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
