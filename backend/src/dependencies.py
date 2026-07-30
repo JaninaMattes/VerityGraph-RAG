@@ -10,8 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import Settings, get_settings
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
+from src.domain.tenants.service import TenantService
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
+)
+from src.infrastructure.database.postgres.repositories.tenant import (
+    PostgresTenantRepository,
 )
 from src.infrastructure.database.postgres.session import get_db_session
 from src.infrastructure.storage.minio.storage import MinioStorage
@@ -35,11 +39,11 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.minio_url,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        region=settings.minio_region,
-        secure=settings.minio_secure,
+        endpoint=settings.storage_url,
+        access_key=settings.storage_access_key,
+        secret_key=settings.storage_secret_key,
+        region=settings.storage_region,
+        secure=settings.storage_secure,
     )
 
 
@@ -55,13 +59,15 @@ MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
 
+def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
+    return PostgresTenantRepository(session=session)
 
 def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
-        bucket=settings.minio_bucket_name,
+        bucket=settings.storage_default_buckets,
         sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.minio_sse_customer_key)
+            key=base64.b64decode(settings.storage_sse_customer_key)
         ),  # string to byte code
     )
     storage.create_bucket()  # TODO: Move to CI/CD pipeline
@@ -75,3 +81,9 @@ def get_document_service(
     workflow: Annotated[WorkflowClient, Depends(get_workflow_client)],
 ) -> DocumentService:
     return DocumentService(repository=repository, storage=storage, workflow=workflow)
+
+
+def get_tenant_service(
+    repository: Annotated[PostgresTenantRepository, Depends(get_tenant_repository)],
+) -> TenantService:
+    return TenantService(repository=repository)
