@@ -24,4 +24,5 @@ class UserResponse(BaseModel):
 
 class CurrentUser(BaseModel):
     user_id: UUID
+    username: str
     status: UserStatus

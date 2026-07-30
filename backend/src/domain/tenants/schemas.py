@@ -6,6 +6,9 @@ from src.shared.enums import TenantStatus
 
 """The schema module provides the building blocks for ..."""
 
+class UpdateRequest(BaseModel):
+    organisation: str
+
 
 class TenantResponse(BaseModel):
     tenant_id: UUID

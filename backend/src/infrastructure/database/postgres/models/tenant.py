@@ -10,10 +10,6 @@ from src.infrastructure.database.postgres.models.document import Document
 from src.infrastructure.database.postgres.models.user import User
 from src.shared.enums import TenantStatus
 
-# if typing.TYPE_CHECKING:
-#     from .document import Document
-#     from .user import User
-
 
 class Tenant(Base):
     __tablename__ = "tenant"
@@ -22,11 +18,10 @@ class Tenant(Base):
         UUID,
         primary_key=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
-        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     # Relationships
-    documents: Mapped[list["Document"] | None] = relationship(back_populates="tenant")
-    users: Mapped[list["User"] | None] = relationship(back_populates="tenant")
+    documents: Mapped[list[Document] | None] = relationship(back_populates="tenant")
+    users: Mapped[list[User] | None] = relationship(back_populates="tenant")
 
     # Company details
     organisation: Mapped[str] = mapped_column(String(255), nullable=False)

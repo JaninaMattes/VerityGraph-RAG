@@ -7,30 +7,6 @@ class StorageProvider(StrEnum):
     AZURE = "azure"
     LOCAL = "local"
 
-
-class TenantStatus(StrEnum):
-    CREATED = "created"
-    ACTIVE = "active"
-    SUSPENDED = "suspended"
-
-
-class UserStatus(StrEnum):
-    CREATED = "created"
-    ACTIVE = "active"
-    DISABLED = "disabled"
-
-
-class UserRole(StrEnum):
-    ADMIN = "admin"
-    USER = "user"
-
-
-class CredentialStatus(StrEnum):
-    VALID = "valid"
-    INVALID = "invalid"
-    REVOKED = "revoked"
-
-
 class TenantStatus(StrEnum):
     CREATED = "created"
     ACTIVE = "active"
@@ -71,10 +47,8 @@ class DocumentType(StrEnum):
 
 class DocumentStatus(StrEnum):
     PENDING = "pending"
-    PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
-    READY = "ready"
     READY = "ready"
     FAILED = "failed"
     DELETED = "deleted"

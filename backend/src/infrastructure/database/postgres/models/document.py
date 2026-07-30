@@ -14,7 +14,7 @@ from src.shared.enums import (
 )
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant
+    from .tenant import Tenant  # noqa: TC004
 
 
 class Document(Base):
@@ -27,14 +27,10 @@ class Document(Base):
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("tenant.tenant_id", ondelete="CASCADE")
-        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
-    )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("tenant.tenant_id", ondelete="CASCADE")
     )
 
     # Relationship
-    tenant: Mapped["Tenant"] = relationship(back_populates="documents")
+    tenant: Mapped[Tenant] = relationship(back_populates="documents")
 
     # File details
     filename: Mapped[str] = mapped_column(String(255))
@@ -67,8 +63,6 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 

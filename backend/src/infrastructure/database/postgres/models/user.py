@@ -11,11 +11,10 @@ from src.infrastructure.database.postgres.models.credentials import UserCredenti
 from src.shared.enums import UserRole, UserStatus
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant
+    from .tenant import Tenant  # noqa: TC004
 
 
 class User(Base):
-    __tablename__ = "users"
     __tablename__ = "users"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -28,8 +27,8 @@ class User(Base):
     )
 
     # Relationship
-    tenant: Mapped["Tenant"] = relationship(back_populates="users")
-    credentials: Mapped[list["UserCredentials"]] = relationship(back_populates="user")
+    tenant: Mapped[Tenant] = relationship(back_populates="users")
+    credentials: Mapped[list[UserCredentials]] = relationship(back_populates="user")
 
     # User details
     username: Mapped[str] = mapped_column(String(255))
@@ -50,8 +49,6 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
