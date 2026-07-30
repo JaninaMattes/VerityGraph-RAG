@@ -98,7 +98,7 @@ class TenantService:
                 f"Failed to update tenant with ID '{tenant_id}' in database!",
             ) from e
 
-    async def delete(self, tenant_id: uuid.UUID) -> TenantResponse:
+    async def deactivate(self, tenant_id: uuid.UUID) -> TenantResponse:
         try:
             db_tenant = await self.repository.get(tenant_id)
 

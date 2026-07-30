@@ -5,7 +5,7 @@ from src.core.logger import get_logger
 from src.domain.users.dataclasses import User
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
-from src.domain.users.schemas import CurrentUser, Response
+from src.domain.users.schemas import CurrentUser, UserResponse
 from src.shared.enums import UserRole, UserStatus
 from src.utils.exceptions import UserNotFoundException, UserServiceError
 
@@ -21,9 +21,8 @@ class UserService:
     ) -> None:
         self.repository = repository
 
-    async def create(
-        self, user: User, user_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> Response:
+    async def create(self, user: User, tenant_id: uuid.UUID) -> UserResponse:
+        # Randomly generate new UUID
         user_id = uuid.uuid4()
 
         # Persist metadata
@@ -41,7 +40,7 @@ class UserService:
 
         try:
             db_user = await self.repository.create(entity)
-            return Response(user_id=db_user.user_id, status=db_user.status)
+            return UserResponse(user_id=db_user.user_id, status=db_user.status)
         except Exception as e:
             logger.exception(
                 f"Failed to create new user with ID '{user_id}' in database!",
@@ -62,7 +61,6 @@ class UserService:
                 )
             return CurrentUser(
                 user_id=db_user.user_id,
-                username=db_user.username,
                 status=db_user.status,
             )
         except Exception as e:
@@ -74,7 +72,7 @@ class UserService:
                 f"Failed to get user with ID '{user_id}' from database!",
             ) from e
 
-    async def update(self, user: User, user_id: uuid.UUID) -> Response:
+    async def update(self, user: User, user_id: uuid.UUID) -> CurrentUser:
         try:
             db_user = await self.repository.get(user_id)
 
@@ -92,7 +90,7 @@ class UserService:
             # Update user information
             updated = await self.repository.update(db_user)
 
-            return Response(user_id=updated.user_id, status=db_user.status)
+            return CurrentUser(user_id=updated.user_id, status=db_user.status)
 
         except Exception as e:
             logger.exception(
@@ -103,7 +101,7 @@ class UserService:
                 f"Failed to update user with ID '{user_id}' in database!",
             ) from e
 
-    async def delete(self, user_id: uuid.UUID) -> Response:
+    async def deactivate(self, user_id: uuid.UUID) -> UserResponse:
         try:
             db_user = await self.repository.get(user_id)
 
@@ -114,7 +112,9 @@ class UserService:
                 )
 
             deleted_user = await self.repository.delete(db_user)
-            return Response(user_id=deleted_user.user_id, status=deleted_user.status)
+            return UserResponse(
+                user_id=deleted_user.user_id, status=deleted_user.status
+            )
 
         except Exception as e:
             logger.exception(

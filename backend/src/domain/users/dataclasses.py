@@ -9,4 +9,3 @@ class User:
 
     username: str
     email: str
-    organisation: str
