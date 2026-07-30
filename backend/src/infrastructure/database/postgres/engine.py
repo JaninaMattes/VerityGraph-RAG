@@ -8,6 +8,4 @@ from src.core.config import get_settings
 settings = get_settings()
 
 # Initialize the async DB engine
-async_engine: AsyncEngine = create_async_engine(
-    settings.postgresql_url, echo=settings.postgresql_echo
-)
+async_engine: AsyncEngine = create_async_engine(settings.database_url)

@@ -1,10 +1,11 @@
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.concurrency import asynccontextmanager
 from fastapi.responses import JSONResponse
 
 from src.api.routers import document, health, hello_world, tenant, user
 from src.core.config import get_settings
 from src.core.logger import get_logger, setup_logging
+from src.infrastructure.database.postgres.engine import async_engine
 from src.utils.exceptions import (
     DocumentNotFoundException,
     TenantNotFoundException,
@@ -15,9 +16,16 @@ from src.utils.exceptions import (
 setup_logging(log_level="INFO")
 logger = get_logger("api-backend.main")
 
-load_dotenv()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    await async_engine.dispose()
+
+
 settings = get_settings()
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
 # Exception handler
@@ -45,8 +53,8 @@ async def document_exception_handler(request: Request, exc: DocumentNotFoundExce
     )
 
 
-app.include_router(hello_world.router, prefix=settings.api_prefix, tags=["hello-world"])
-app.include_router(health.router, prefix=settings.api_prefix, tags=["health"])
-app.include_router(tenant.router, prefix=settings.api_prefix, tags=["tenants"])
-app.include_router(user.router, prefix=settings.api_prefix, tags=["users"])
-app.include_router(document.router, prefix=settings.api_prefix, tags=["documents"])
+app.include_router(hello_world.router, prefix=settings.api_prefix, tags=["Hello-World"])
+app.include_router(health.router, prefix=settings.api_prefix, tags=["Health"])
+app.include_router(tenant.router, prefix=settings.api_prefix, tags=["Tenants"])
+app.include_router(user.router, prefix=settings.api_prefix, tags=["Users"])
+app.include_router(document.router, prefix=settings.api_prefix, tags=["Documents"])

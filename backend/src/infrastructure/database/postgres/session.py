@@ -8,7 +8,9 @@ from src.infrastructure.database.postgres.engine import async_engine
 logger = get_logger("api-backend.infrastructure.postgres")
 
 # Create a session factory
-async_session_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+async_session_factory = async_sessionmaker(
+    bind=async_engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession]:

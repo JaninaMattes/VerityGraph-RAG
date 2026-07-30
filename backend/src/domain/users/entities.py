@@ -6,7 +6,7 @@ from src.shared.enums import UserRole, UserStatus
 
 class UserEntity:
     """
-    Domain representation of a document.
+    Domain representation of a user.
 
     This object lives inside the business layer and is independent of
     FastAPI, SQLAlchemy, or Pydantic.

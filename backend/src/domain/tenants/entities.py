@@ -6,7 +6,7 @@ from src.shared.enums import TenantStatus
 
 class TenantEntity:
     """
-    Domain representation of a document.
+    Domain representation of a tenant.
 
     This object lives inside the business layer and is independent of
     FastAPI, SQLAlchemy, or Pydantic.
