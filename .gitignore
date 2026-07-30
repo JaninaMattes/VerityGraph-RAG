@@ -420,6 +420,7 @@ FodyWeavers.xsd
 
 # Built Visual Studio Code Extensions
 *.vsix
+*.DS_Store
 
 # Windows Installer files from build outputs
 *.cab
