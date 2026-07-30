@@ -26,12 +26,12 @@ class UserRole(StrEnum):
 
 
 class CredentialStatus(StrEnum):
+    CREATED = "created"
     VALID = "valid"
-    INVALID = "invalid"
     REVOKED = "revoked"
 
 
-class Language(StrEnum):
+class LanguageType(StrEnum):
     ENGLISH = "english"
 
 
