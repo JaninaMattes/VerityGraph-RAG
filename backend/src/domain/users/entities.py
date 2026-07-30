@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import UserRole, UserStatus
+from src.shared.enums import UserStatus
 
 
 class UserEntity:
     """
-    Domain representation of a document.
+    Domain representation of a user.
 
     This object lives inside the business layer and is independent of
     FastAPI, SQLAlchemy, or Pydantic.
@@ -19,7 +19,7 @@ class UserEntity:
         tenant_id: UUID,
         username: str,
         email: str,
-        roles: list[UserRole],
+        # roles: list[UserRole],
         created_at: datetime,
         updated_at: datetime,
         deleted_at: datetime | None = None,
@@ -31,7 +31,7 @@ class UserEntity:
         self.tenant_id = tenant_id
         self.username = username
         self.email = email
-        self.roles = roles
+        # self.roles = roles
 
         # Audit
         self.created_at = created_at

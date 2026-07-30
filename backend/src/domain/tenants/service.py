@@ -5,7 +5,7 @@ from src.core.logger import get_logger
 from src.domain.tenants.dataclasses import Tenant
 from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
-from src.domain.tenants.schemas import CurrentTenant, Response
+from src.domain.tenants.schemas import CurrentTenant, TenantResponse
 from src.shared.enums import TenantStatus
 from src.utils.exceptions import TenantNotFoundException, TenantServiceError
 
@@ -21,7 +21,7 @@ class TenantService:
     ) -> None:
         self.repository = repository
 
-    async def create(self, tenant: Tenant) -> Response:
+    async def create(self, tenant: Tenant) -> TenantResponse:
         tenant_id = uuid.uuid4()
 
         # Persist metadata
@@ -35,7 +35,9 @@ class TenantService:
         )
         try:
             db_tenant = await self.repository.create(entity)
-            return Response(tenant_id=db_tenant.tenant_id, status=db_tenant.status)
+            return TenantResponse(
+                tenant_id=db_tenant.tenant_id, status=db_tenant.status
+            )
         except Exception as e:
             logger.exception(
                 f"Failed to create tenant entry '{tenant_id}' in DB!",
@@ -68,7 +70,7 @@ class TenantService:
                 f"Failed to retrieve tenant with ID '{tenant_id}' from database!",
             ) from e
 
-    async def update(self, tenant: Tenant, tenant_id: uuid.UUID) -> Response:
+    async def update(self, tenant: Tenant, tenant_id: uuid.UUID) -> TenantResponse:
         try:
             db_tenant = await self.repository.get(tenant_id)
 
@@ -85,7 +87,7 @@ class TenantService:
             # Update tenant information
             updated = await self.repository.update(db_tenant)
 
-            return Response(tenant_id=updated.tenant_id, status=db_tenant.status)
+            return TenantResponse(tenant_id=updated.tenant_id, status=db_tenant.status)
 
         except Exception as e:
             logger.exception(
@@ -96,7 +98,7 @@ class TenantService:
                 f"Failed to update tenant with ID '{tenant_id}' in database!",
             ) from e
 
-    async def delete(self, tenant_id: uuid.UUID) -> Response:
+    async def delete(self, tenant_id: uuid.UUID) -> TenantResponse:
         try:
             db_tenant = await self.repository.get(tenant_id)
 
@@ -107,7 +109,7 @@ class TenantService:
                 )
 
             deleted_tenant = await self.repository.delete(db_tenant)
-            return Response(
+            return TenantResponse(
                 tenant_id=deleted_tenant.tenant_id, status=deleted_tenant.status
             )
 
