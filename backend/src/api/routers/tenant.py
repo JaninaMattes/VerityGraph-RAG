@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.core.logger import get_logger
 from src.dependencies import get_tenant_service
 from src.domain.tenants.dataclasses import Tenant
-from src.domain.tenants.schemas import CurrentTenant, TenantResponse
+from src.domain.tenants.schemas import CurrentTenant, TenantResponse, UpdateRequest
 from src.domain.tenants.service import TenantService
 
 logger = get_logger("api-backend.routers.tenant")
@@ -31,7 +31,6 @@ async def register(
             detail="An internal error occurred while creating new tenant entry in the database.",
         ) from e
 
-
 @router.get("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
 async def read_tenant(
     tenant_id: UUID,
@@ -39,6 +38,26 @@ async def read_tenant(
 ) -> CurrentTenant:
     try:
         return await service.get(tenant_id=tenant_id)
+    except Exception as e:
+        logger.exception(
+            f"Retrieval of tenant with ID '{tenant_id}' failed!",
+        )  # log internally, keep external message generic
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred while searching for tenant.",
+        ) from e
+
+
+@router.put("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
+async def update_tenant(
+    tenant_id: UUID,
+    tenant: UpdateRequest,
+    service: TenantServiceDep,
+) -> CurrentTenant:
+    try:
+        return await service.update(
+            tenant_id=tenant_id, tenant=Tenant(tenant.organisation)
+        )
     except Exception as e:
         logger.exception(
             f"Retrieval of tenant with ID '{tenant_id}' failed!",

@@ -34,8 +34,8 @@ class DocumentEntity:
         status: DocumentStatus,
         created_at: datetime,
         updated_at: datetime,
-        # deleted_at: datetime | None = None,
-        # deleted_by: UUID | None = None,
+        deleted_at: datetime | None = None,
+        deleted_by: UUID | None = None,
     ) -> None:
         # Identity
         self.document_id = document_id
@@ -43,25 +43,25 @@ class DocumentEntity:
 
         # Upload information
         self.filename = filename
-        # self.mime_type = mime_type
-        # self.document_type = document_type
-        # self.language = language
+        self.mime_type = mime_type
+        self.document_type = document_type
+        self.language = language
 
-        # self.storage_key = storage_key
-        # self.bucket_name = bucket_name
-        # self.storage_provider = storage_provider
-        # self.version_id = version_id
-        # self.etag = etag
+        self.storage_key = storage_key
+        self.bucket_name = bucket_name
+        self.storage_provider = storage_provider
+        self.version_id = version_id
+        self.etag = etag
 
-        # self.checksum = checksum
-        # self.size_bytes = size_bytes
-        # self.status = status
+        self.checksum = checksum
+        self.size_bytes = size_bytes
+        self.status = status
 
         # Audit
         self.created_at = created_at
         self.updated_at = updated_at
-        # self.deleted_at = deleted_at
-        # self.deleted_by = deleted_by
+        self.deleted_at = deleted_at
+        self.deleted_by = deleted_by
 
     def mark_processing(self) -> None:
         self.status = DocumentStatus.PROCESSING
