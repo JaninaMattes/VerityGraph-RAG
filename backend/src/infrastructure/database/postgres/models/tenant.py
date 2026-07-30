@@ -1,23 +1,18 @@
-import typing
+# import typing
 import uuid
 from datetime import datetime
 
-from sqlalchemy import (
-    UUID,
-    DateTime,
-    Enum,
-    Index,
-    String,
-    func,
-)
+from sqlalchemy import UUID, DateTime, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.infrastructure.database.postgres.models.base import Base
+from src.infrastructure.database.postgres.base import Base
+from src.infrastructure.database.postgres.models.document import Document
+from src.infrastructure.database.postgres.models.user import User
 from src.shared.enums import TenantStatus
 
-if typing.TYPE_CHECKING:
-    from .document import Document
-    from .user import User
+# if typing.TYPE_CHECKING:
+#     from .document import Document
+#     from .user import User
 
 
 class Tenant(Base):
@@ -29,21 +24,14 @@ class Tenant(Base):
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     # Relationships
-    documents: Mapped[list[Document] | None] = relationship(
-        back_populates="tenant",
-        cascade="all, delete-orphan",
-    )
-    users: Mapped[list[User] | None] = relationship(
-        back_populates="tenant",
-        cascade="all, delete-orphan",
-    )
+    documents: Mapped[list["Document"] | None] = relationship(back_populates="tenant")
+    users: Mapped[list["User"] | None] = relationship(back_populates="tenant")
 
     # Company details
     organisation: Mapped[str] = mapped_column(String(255), nullable=False)
-
-    # Status information
     status: Mapped[TenantStatus] = mapped_column(
-        Enum(TenantStatus, native_enum=True), default=TenantStatus.CREATED
+        Enum(TenantStatus, name="tenantstatus", native_enum=True),
+        default=TenantStatus.CREATED,
     )
 
     # Audit information
@@ -56,18 +44,16 @@ class Tenant(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
-    __table_args__ = (
-        Index(
-            "idx_tenants_organisation",
-            "organisation",
-        ),
-        Index(
-            "idx_tenants_created",
-            "created_at",
-        ),
-    )
+    # __table_args__ = (
+    #     Index(
+    #         "idx_tenants_organisation",
+    #         "organisation",
+    #     ),
+    #     Index(
+    #         "idx_tenants_created",
+    #         "created_at",
+    #     ),
+    # )
 
     def __repr__(self) -> str:
-        return (
-            f"Tenant(tenant_id={self.tenant_id!r}, organisation={self.organisation!r})"
-        )
+        return f"Tenant(tenant_id={self.tenant_id!r})"
