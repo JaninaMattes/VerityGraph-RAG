@@ -1,6 +1,6 @@
 import typing
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,10 +23,12 @@ class Document(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
+        index=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("tenant.tenant_id", ondelete="CASCADE")
+        ForeignKey("tenant.tenant_id", ondelete="CASCADE"),
+        index=True,
     )
 
     # Relationship
@@ -50,7 +52,9 @@ class Document(Base):
     version_id: Mapped[str | None] = mapped_column(String(255))
     etag: Mapped[str | None] = mapped_column(String(255))
     checksum: Mapped[str | None] = mapped_column(String(64), index=True)
-    size_bytes: Mapped[int] = mapped_column(BigInteger, default=-1)  # -1 unknown size
+    size_bytes: Mapped[int] = mapped_column(
+        BigInteger, default=-1, server_default="-1"
+    )  # -1 unknown size
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus", native_enum=True),
         default=DocumentStatus.PENDING,
@@ -58,10 +62,12 @@ class Document(Base):
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)

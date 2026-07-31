@@ -1,21 +1,21 @@
 """initial database schema
 
-Revision ID: b54d27e29e92
+Revision ID: fc5bd7a916d3
 Revises: 
-Create Date: 2026-07-30 15:24:23.685852
+Create Date: 2026-07-31 13:36:20.937709
 
 """
-from collections.abc import Sequence
-
-import sqlalchemy as sa
+from typing import Sequence, Union
 
 from alembic import op
+import sqlalchemy as sa
+
 
 # revision identifiers, used by Alembic.
-revision: str = 'b54d27e29e92'
-down_revision: str | Sequence[str] | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision: str = 'fc5bd7a916d3'
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
@@ -25,72 +25,87 @@ def upgrade() -> None:
     sa.Column('tenant_id', sa.UUID(), nullable=False),
     sa.Column('organisation', sa.String(length=255), nullable=False),
     sa.Column('status', sa.Enum('CREATED', 'ACTIVE', 'SUSPENDED', name='tenantstatus'), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_by', sa.UUID(), nullable=True),
     sa.PrimaryKeyConstraint('tenant_id')
     )
+    op.create_index(op.f('ix_tenant_tenant_id'), 'tenant', ['tenant_id'], unique=False)
     op.create_table('document',
     sa.Column('document_id', sa.UUID(), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=False),
     sa.Column('filename', sa.String(length=255), nullable=False),
-    sa.Column('mime_type', sa.String(length=255), nullable=False),
+    sa.Column('mime_type', sa.String(length=255), nullable=True),
     sa.Column('document_type', sa.Enum('PDF', 'DOCX', 'DOC', 'MARKDOWN', 'CSV', 'HTML', 'IMAGE', 'PPTX', name='documenttype'), nullable=True),
     sa.Column('language', sa.Enum('ENGLISH', name='languagetype'), nullable=True),
-    sa.Column('bucket_name', sa.Text(), nullable=False),
+    sa.Column('bucket_name', sa.Text(), nullable=True),
     sa.Column('storage_key', sa.Text(), nullable=False),
     sa.Column('storage_provider', sa.Enum('MINIO', 'S3', 'AZURE', 'LOCAL', name='storageprovider'), nullable=True),
     sa.Column('version_id', sa.String(length=255), nullable=True),
     sa.Column('etag', sa.String(length=255), nullable=True),
     sa.Column('checksum', sa.String(length=64), nullable=True),
-    sa.Column('size_bytes', sa.BigInteger(), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'UPLOADED', 'PROCESSING', 'READY', 'FAILED', 'DELETED', name='documentstatus'), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('size_bytes', sa.BigInteger(), server_default='-1', nullable=False),
+    sa.Column('status', sa.Enum('UPLOAD_PENDING', 'UPLOADED', 'PROCESSING', 'READY', 'FAILED', 'DELETED', name='documentstatus'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_by', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['tenant_id'], ['tenant.tenant_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('document_id')
     )
     op.create_index(op.f('ix_document_checksum'), 'document', ['checksum'], unique=False)
+    op.create_index(op.f('ix_document_document_id'), 'document', ['document_id'], unique=False)
+    op.create_index(op.f('ix_document_tenant_id'), 'document', ['tenant_id'], unique=False)
     op.create_table('users',
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=False),
     sa.Column('username', sa.String(length=255), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
+    sa.Column('roles', sa.ARRAY(sa.Enum('ADMIN', 'USER', name='userrole')), nullable=False),
     sa.Column('status', sa.Enum('CREATED', 'ACTIVE', 'DISABLED', name='userstatus'), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_by', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['tenant_id'], ['tenant.tenant_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id'),
     sa.UniqueConstraint('email')
     )
+    op.create_index(op.f('ix_users_tenant_id'), 'users', ['tenant_id'], unique=False)
+    op.create_index(op.f('ix_users_user_id'), 'users', ['user_id'], unique=False)
     op.create_table('credentials',
     sa.Column('credentials_id', sa.UUID(), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('provider', sa.String(length=255), nullable=False),
     sa.Column('password_hash', sa.Text(), nullable=False),
     sa.Column('status', sa.Enum('CREATED', 'VALID', 'REVOKED', name='credentialstatus'), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('password_changed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_by', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.user_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('credentials_id')
     )
+    op.create_index(op.f('ix_credentials_credentials_id'), 'credentials', ['credentials_id'], unique=False)
+    op.create_index(op.f('ix_credentials_user_id'), 'credentials', ['user_id'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_credentials_user_id'), table_name='credentials')
+    op.drop_index(op.f('ix_credentials_credentials_id'), table_name='credentials')
     op.drop_table('credentials')
+    op.drop_index(op.f('ix_users_user_id'), table_name='users')
+    op.drop_index(op.f('ix_users_tenant_id'), table_name='users')
     op.drop_table('users')
+    op.drop_index(op.f('ix_document_tenant_id'), table_name='document')
+    op.drop_index(op.f('ix_document_document_id'), table_name='document')
     op.drop_index(op.f('ix_document_checksum'), table_name='document')
     op.drop_table('document')
+    op.drop_index(op.f('ix_tenant_tenant_id'), table_name='tenant')
     op.drop_table('tenant')
     # ### end Alembic commands ###

@@ -53,7 +53,7 @@ async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
         ) from e
 
 
-@router.put("/users/{user_id}", status_code=status.HTTP_200_OK)
+@router.patch("/users/{user_id}", status_code=status.HTTP_200_OK)
 async def update_user(
     user_id: UUID, user: UpdateRequest, service: UserServiceDep
 ) -> CurrentUser:

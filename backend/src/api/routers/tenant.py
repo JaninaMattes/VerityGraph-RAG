@@ -48,7 +48,7 @@ async def read_tenant(
         ) from e
 
 
-@router.put("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
+@router.patch("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
 async def update_tenant(
     tenant_id: UUID,
     tenant: UpdateRequest,

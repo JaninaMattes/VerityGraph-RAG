@@ -1,15 +1,15 @@
 import typing
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import UUID, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import UUID, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
 from src.shared.enums import CredentialStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User
+    from .user import User  # noqa: TC004
 
 
 class UserCredentials(Base):
@@ -18,14 +18,16 @@ class UserCredentials(Base):
     credentials_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
         primary_key=True,
+        index=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.user_id", ondelete="CASCADE")
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        index=True,
     )
 
     # Relationship
-    user: Mapped["User"] = relationship(back_populates="credentials")
+    user: Mapped[User] = relationship(back_populates="credentials")
 
     # Auth
     provider: Mapped[str] = mapped_column(
@@ -39,10 +41,13 @@ class UserCredentials(Base):
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
