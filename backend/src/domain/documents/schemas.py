@@ -7,15 +7,20 @@ from src.shared.enums import DocumentStatus
 
 """The schema module provides the building blocks for ..."""
 
-class CreateResponse(BaseModel):
+class MetadataRequest(BaseModel):
+    filename: str
+
+
+class MetadataResponse(BaseModel):
     document_id: UUID
     status: DocumentStatus
+
 
 class URLResponse(BaseModel):
     document_id: UUID
     url: str
-    storage_key: str
     expires_at: timedelta
+
 
 class DeleteResponse(BaseModel):
     document_id: UUID

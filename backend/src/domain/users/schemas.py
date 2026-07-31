@@ -10,6 +10,7 @@ from src.shared.enums import UserStatus
 class RegisterRequest(BaseModel):
     username: str
     email: str
+    password_hash: str
 
 
 class UpdateRequest(BaseModel):
@@ -25,4 +26,5 @@ class UserResponse(BaseModel):
 class CurrentUser(BaseModel):
     user_id: UUID
     username: str
+    email: str
     status: UserStatus

@@ -10,7 +10,7 @@ from src.infrastructure.database.postgres.mapper.document import DocumentMapper
 from src.infrastructure.database.postgres.models.document import Document
 from src.utils.exceptions import DocumentNotFoundException, PostgreSQLOperationError
 
-logger = get_logger("api-backend.infra.postgres.doc")
+logger = get_logger("api.infra.postgres.doc")
 
 
 class PostgresDocumentRepository(DocumentRepository):
@@ -31,21 +31,42 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.refresh(db_document)
         except Exception as e:
             logger.exception(
-                f"Failed to create new document metadata entry with ID {document.document_id}!",
+                f"Failed to create new entry for document metadata with ID {document.document_id!r}!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL DB Error",
-                f"Failed to create new document metadata entry with ID {document.document_id}!",
+                f"Failed to create new entry for document metadata with ID {document.document_id!r}!",
             ) from e
 
-        return DocumentMapper.to_entity(db_document)  # refresh
+        return DocumentMapper.to_entity(db_document)  # after refresh
+
+    async def get(self, document_id: UUID) -> DocumentEntity:
+        """Retrieve a record by its primary key."""
+        try:
+            db_document = await self.session.get(Document, document_id)
+            if db_document is None:
+                raise DocumentNotFoundException(
+                    name="Document Repository Error",
+                    message=f"Requested document with ID {document_id} not found!",
+                )
+        except Exception as e:
+            logger.exception(
+                f"Failed to get document metadata with ID {document_id!r}!",
+            )
+            await self.session.rollback()
+            raise PostgreSQLOperationError(
+                "PostgreSQL DB Error",
+                f"Failed to get document metadata with ID {document_id!r}!",
+            ) from e
+
+        return DocumentMapper.to_entity(db_document)
 
     async def update(
         self,
         document: DocumentEntity,
     ) -> DocumentEntity:
-
+        """Update an entry."""
         db_document = DocumentMapper.to_model(document)
 
         # Add objects to session
@@ -55,37 +76,15 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.refresh(merged_document)
         except Exception as e:
             logger.exception(
-                f"Failed to update document metadata with ID {document.document_id}!",
+                f"Failed to update document metadata with ID {document.document_id!r}!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL DB Error",
-                f"Failed to update document metadata with ID {document.document_id}!",
+                f"Failed to update document metadata with ID {document.document_id!r}!",
             ) from e
 
-        return DocumentMapper.to_entity(merged_document)  # refresh
-
-    async def get(self, document_id: UUID) -> DocumentEntity:
-        db_document = None
-        try:
-            db_document = await self.session.get(Document, document_id)
-        except Exception as e:
-            logger.exception(
-                f"Failed to get document metadata with ID {document_id}!",
-            )
-            await self.session.rollback()
-            raise PostgreSQLOperationError(
-                "PostgreSQL DB Error",
-                f"Failed to get document metadata with ID {document_id}!",
-            ) from e
-
-        if db_document is None:
-            raise DocumentNotFoundException(
-                name="Document Repository Error",
-                message=f"Requested document with ID {document_id} not found!",
-            )
-
-        return DocumentMapper.to_entity(db_document)
+        return DocumentMapper.to_entity(merged_document)  # after refresh
 
     async def delete(
         self,
@@ -99,12 +98,12 @@ class PostgresDocumentRepository(DocumentRepository):
             await self.session.commit()
         except Exception as e:
             logger.exception(
-                f"Failed to delete document metadata with ID {document.document_id}!",
+                f"Failed to delete document metadata with ID {document.document_id!r}!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL DB Error",
-                f"Failed to delete document metadata with ID {document.document_id}!",
+                f"Failed to delete document metadata with ID {document.document_id!r}!",
             ) from e
 
         return DocumentMapper.to_entity(merged_document)

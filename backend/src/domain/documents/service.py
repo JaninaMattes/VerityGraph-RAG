@@ -4,16 +4,21 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from src.core.logger import get_logger
-from src.domain.documents.dataclasses import DocumentStream, StorageKey
+from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
-from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
+from src.domain.documents.schemas import (
+    DeleteResponse,
+    MetadataRequest,
+    MetadataResponse,
+    URLResponse,
+)
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.enums import DocumentStatus
 from src.utils.exceptions import DocumentNotFoundException, DocumentServiceError
 from src.workflows.ingestion.workflow import WorkflowClient
 
-logger = get_logger("api-backend.domain.doc.service")
+logger = get_logger("api.domain.doc.service")
 
 
 class DocumentService:
@@ -32,18 +37,36 @@ class DocumentService:
     async def create_upload_url(
         self,
         tenant_id: uuid.UUID,
+        file: MetadataRequest,
         namespace: str = "documents",
     ) -> URLResponse:
         """Create presigned URL to upload file to S3 bucket."""
-        document_id = uuid.uuid4()
 
+        # Create storage key
+        now = datetime.now(UTC)
+        document_id = uuid.uuid4()
         storage_key = StorageKey.document(
             tenant_id=tenant_id,
             document_id=document_id,
             namespace=namespace,
         )
-
+        # Persist metadata
+        entity = DocumentEntity(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            filename=file.filename,
+            storage_key=storage_key,
+            status=DocumentStatus.UPLOAD_PENDING,  # upload in progress
+            created_at=now,
+            updated_at=now,
+        )
         try:
+            db_document = await self.repository.create(document=entity)
+            if db_document is None:
+                raise DocumentNotFoundException(
+                    name="Document Service Error",
+                    message=f"The document with ID {document_id} was not found!",
+                )
             # Create presigned URL
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
@@ -52,116 +75,91 @@ class DocumentService:
                 expires_at=expires_at,
             )
             return URLResponse(
-                document_id=document_id,
+                document_id=db_document.document_id,
                 url=presigned_url,
-                storage_key=storage_key.value,
                 expires_at=expires_at,
             )
         except Exception as e:
             logger.exception(
-                f"Failed to generate presigned upload URL for tenant '{tenant_id}' to blob storage!",
+                f"Failed to generate presigned upload URL for tenant {tenant_id!r} to blob storage!",
             )
             raise DocumentServiceError(
                 "Document Service Error",
-                f"Failed to generate presigned upload URL for tenant '{tenant_id}' to blob storage!",
+                f"Failed to generate presigned upload URL for tenant {tenant_id!r} to blob storage!",
             ) from e
 
     async def create_download_url(
         self,
         document_id: uuid.UUID,
         tenant_id: uuid.UUID,
-        namespace: str = "documents",
     ) -> URLResponse:
         """Create presigned URL to download file from S3 bucket."""
-        expires_at = timedelta(minutes=30)  # 30 mins expiration
-        storage_key = StorageKey.document(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            namespace=namespace,
-        )
         try:
+            db_document = await self.repository.get(document_id=document_id)
+            if db_document is None:
+                raise DocumentNotFoundException(
+                    name="Document Service Error",
+                    message=f"The document with ID {document_id} was not found!",
+                )
+            expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_download_url,
-                storage_key=storage_key,
+                storage_key=db_document.storage_key,
                 expires_at=expires_at,
             )
             return URLResponse(
                 document_id=document_id,
                 url=presigned_url,
-                storage_key=storage_key.value,
                 expires_at=expires_at,
             )
         except Exception as e:
             logger.exception(
-                f"Failed to generate presigned download URL for tenant '{tenant_id}' to blob storage!",
+                f"Failed to generate presigned download URL for tenant {tenant_id!r} to blob storage!",
             )
             raise DocumentServiceError(
                 "Document Service Error",
-                f"Failed to generate presigned download URL for tenant '{tenant_id}' to blob storage!",
+                f"Failed to generate presigned download URL for tenant {tenant_id!r} to blob storage!",
             ) from e
 
-    async def create(
+    async def update_metadata(
         self,
-        file: DocumentStream,
-        tenant_id: uuid.UUID,
-        namespace: str = "documents",
-    ) -> CreateResponse:
-        document_id = uuid.uuid4()
-        storage_key = StorageKey.document(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            namespace=namespace,
-        )
+        document_id: uuid.UUID,
+    ) -> MetadataResponse:
         try:
-            # Non-blocking storage call
-            # TODO: Deduplicate by matching checksum, then point to same file
-            stored_file = await asyncio.to_thread(
-                self.storage.store_file, file=file, storage_key=storage_key
+            db_document = await self.repository.get(document_id=document_id)
+            if db_document is None:
+                raise DocumentNotFoundException(
+                    name="Document Service Error",
+                    message=f"The document with ID {document_id} was not found!",
+                )
+            metadata = await asyncio.to_thread(
+                self.storage.get_obj_metadata,
+                storage_key=db_document.storage_key,
             )
-        except Exception as e:
+
+            # Modulate document metadata
+            db_document.storage_key = metadata.storage_key
+            db_document.mime_type = metadata.mime_type
+            db_document.size_bytes = metadata.size_bytes
+            db_document.bucket_name = metadata.bucket_name
+            db_document.version_id = metadata.version_id
+            db_document.etag = metadata.etag
+            # If object is there we can mark it as uploaded
+            db_document.mark_uploaded()
+
+            # Update document metdata
+            updated = await self.repository.update(db_document)
+            return MetadataResponse(
+                document_id=updated.document_id, status=updated.status
+            )
+        except Exception:
             logger.exception(
-                f"Failed to upload document '{file.filename}' to blob storage!",
+                f"Failed to process metadata for document {document_id}!",
             )
             raise DocumentServiceError(
                 "Document Service Error",
-                f"Failed to upload document '{file.filename}' to blob storage!",
-            ) from e
-
-        # Persist metadata
-        now = datetime.now(UTC)
-        entity = DocumentEntity(
-            document_id=document_id,
-            tenant_id=tenant_id,
-            filename=file.filename,
-            mime_type=stored_file.mime_type,
-            storage_key=storage_key,
-            size_bytes=stored_file.size_bytes,
-            checksum=stored_file.checksum,
-            etag=stored_file.etag,
-            version_id=stored_file.version_id,
-            bucket_name=stored_file.bucket_name,
-            status=DocumentStatus.PROCESSING,  # in progress
-            created_at=now,
-            updated_at=now,
-        )
-        try:
-            # Save metadata
-            db_document = await self.repository.create(entity)
-
-            # Trigger Temporal background processing
-            await self.workflow.start_ingestion(entity.document_id)
-            return CreateResponse(
-                document_id=db_document.document_id, status=db_document.status
+                f"Failed to process metadata for document {document_id}!",
             )
-        except Exception as e:
-            await asyncio.to_thread(self.storage.delete_file, storage_key=storage_key)
-            logger.exception(
-                f"Failed to create document '{file.filename}' metadata in DB!",
-            )
-            raise DocumentServiceError(
-                "Document Service Error",
-                f"Failed to create document '{file.filename}' metadata in DB!",
-            ) from e
 
     async def delete(
         self, document_id: uuid.UUID, tenant_id: uuid.UUID
@@ -181,9 +179,13 @@ class DocumentService:
 
             # Update metadata
             db_document = await self.repository.update(document)
-
-            # Trigger Temporal background processing
-            await self.workflow.start_removal(document.document_id)
+            if db_document is None:
+                raise DocumentNotFoundException(
+                    name="Document Service Error",
+                    message=f"The document with ID {document_id} was not found!",
+                )
+            # # Trigger Temporal background processing
+            # await self.workflow.start_removal(document.document_id)
 
             return DeleteResponse(
                 document_id=db_document.document_id, status=db_document.status

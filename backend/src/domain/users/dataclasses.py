@@ -9,3 +9,4 @@ class User:
 
     username: str
     email: str
+    password_hash: str

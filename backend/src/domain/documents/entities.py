@@ -30,7 +30,7 @@ class DocumentEntity:
         version_id: str | None = None,
         etag: str | None = None,
         checksum: DocumentChecksum | None = None,
-        size_bytes: int,
+        size_bytes: int = -1,
         status: DocumentStatus,
         created_at: datetime,
         updated_at: datetime,
@@ -63,11 +63,6 @@ class DocumentEntity:
         self.deleted_at = deleted_at
         self.deleted_by = deleted_by
 
-    def mark_processing(self) -> None:
-        self.status = DocumentStatus.PROCESSING
-        self.updated_at = datetime.now(UTC)
-        self.updated_at = datetime.now(UTC)
-
     def mark_ready(
         self,
         *,
@@ -77,6 +72,16 @@ class DocumentEntity:
     ) -> None:
         self.status = DocumentStatus.READY
         self.language = language
+        self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
+
+    def mark_uploaded(self) -> None:
+        self.status = DocumentStatus.UPLOADED
+        self.updated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
+
+    def mark_processing(self) -> None:
+        self.status = DocumentStatus.PROCESSING
         self.updated_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
