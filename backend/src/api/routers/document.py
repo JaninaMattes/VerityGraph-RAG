@@ -8,10 +8,15 @@ from src.dependencies import (
     get_document_service,
 )
 from src.domain.auth.dataclasses import Principal
-from src.domain.documents.schemas import CreateResponse, DeleteResponse, URLResponse
+from src.domain.documents.schemas import (
+    DeleteResponse,
+    MetadataRequest,
+    MetadataResponse,
+    URLResponse,
+)
 from src.domain.documents.service import DocumentService
 
-logger = get_logger("api-backend.routers.document")
+logger = get_logger("api.routers.document")
 
 router = APIRouter()
 
@@ -19,35 +24,54 @@ DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 CurrentUserDep = Annotated[Principal, Depends(get_current_user)]
 
 
-@router.post("/documents/upload", status_code=status.HTTP_200_OK)
+@router.post(
+    "/documents/upload", status_code=status.HTTP_200_OK, response_model=URLResponse
+)
 async def create_upload_url(
+    file: MetadataRequest,
     service: DocServiceDep,
     current_user: CurrentUserDep,
+    namespace: str = "documents",
 ) -> URLResponse:
     tenant_id = current_user.tenant_id
     try:
-        return await service.create_upload_url(tenant_id)
+        return await service.create_upload_url(
+            tenant_id, file=file, namespace=namespace
+        )
     except Exception as e:
         logger.exception(
-            f"Creation of presigned upload URL for user with ID '{current_user.user_id}' failed!",
+            f"Creation of presigned upload URL for user with ID {current_user.user_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while generating the presigned upload URL.",
         ) from e
 
-
-@router.post("/documents/{document_id}/complete", status_code=status.HTTP_200_OK)
-async def create_metadata(
+@router.patch(
+    "/documents/{document_id}/complete",
+    status_code=status.HTTP_200_OK,
+    response_model=MetadataResponse,
+)
+async def complete(
     document_id: uuid.UUID,
     service: DocServiceDep,
     current_user: CurrentUserDep,
-) -> CreateResponse: ...
-
+) -> MetadataResponse:
+    try:
+        return await service.update_metadata(document_id=document_id)
+    except Exception as e:
+        logger.exception(
+            f"Update of metadata for document with ID {document_id!r} failed!",
+        )  # log internally, keep external message generic
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred while updating document information.",
+        ) from e
 
 @router.get(
     "/documents/{document_id}/download",
     status_code=status.HTTP_200_OK,
+    response_model=URLResponse,
 )
 async def create_download_url(
     document_id: uuid.UUID,
@@ -59,7 +83,7 @@ async def create_download_url(
         return await service.create_download_url(document_id, tenant_id)
     except Exception as e:
         logger.exception(
-            f"Creation of presigned download URL for document with ID '{document_id}' failed!",
+            f"Creation of presigned download URL for document with ID {document_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -70,6 +94,7 @@ async def create_download_url(
 @router.delete(
     "/documents/{document_id}/delete",
     status_code=status.HTTP_200_OK,
+    response_model=DeleteResponse,
 )
 async def delete_documents(
     document_id: uuid.UUID,
@@ -83,7 +108,7 @@ async def delete_documents(
 
     except Exception as e:
         logger.exception(
-            f"Deletion of document with ID '{document_id}' failed!",
+            f"Deletion of document with ID {document_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

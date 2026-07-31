@@ -30,7 +30,7 @@ class UserCredentials(Base):
     user: Mapped[User] = relationship(back_populates="credentials")
 
     # Auth
-    provider: Mapped[str] = mapped_column(
+    provider: Mapped[str | None] = mapped_column(
         String(255)
     )  # e.g. Local, or Google credentials
     password_hash: Mapped[str] = mapped_column(Text)

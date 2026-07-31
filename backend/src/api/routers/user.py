@@ -13,7 +13,7 @@ from src.domain.users.schemas import (
 )
 from src.domain.users.service import UserService
 
-logger = get_logger("api-backend.routers.user")
+logger = get_logger("api.routers.user")
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
@@ -21,17 +21,20 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 router = APIRouter()
 
 
-@router.post("/users/register", status_code=status.HTTP_200_OK)
+@router.post(
+    "/users/register", status_code=status.HTTP_200_OK, response_model=UserResponse
+)
 async def register(
     tenant_id: UUID, user: RegisterRequest, service: UserServiceDep
 ) -> UserResponse:
     try:
         return await service.create(
-            User(user.username, user.email), tenant_id=tenant_id
+            User(user.username, user.email, user.password_hash),
+            tenant_id=tenant_id,
         )
     except Exception as e:
         logger.exception(
-            f"Creation of new user with email '{user.email}' and name '{user.username}' failed!",
+            f"Creation of new user with email {user.email!r} and name {user.username!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -39,13 +42,15 @@ async def register(
         ) from e
 
 
-@router.get("/users/{user_id}", status_code=status.HTTP_200_OK)
+@router.get(
+    "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=CurrentUser
+)
 async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
     try:
         return await service.get(user_id=user_id)
     except Exception as e:
         logger.exception(
-            f"Creation of new user with ID '{user_id}' failed!",
+            f"Creation of new user with ID {user_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -53,7 +58,9 @@ async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
         ) from e
 
 
-@router.patch("/users/{user_id}", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=CurrentUser
+)
 async def update_user(
     user_id: UUID, user: UpdateRequest, service: UserServiceDep
 ) -> CurrentUser:
@@ -63,22 +70,24 @@ async def update_user(
         )
     except Exception as e:
         logger.exception(
-            f"Creation of new user with ID '{user_id}' failed!",
-        )  # log internally, keep external message generic
+            f"Creation of new user with ID {user_id!r} failed!",
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while searching for user.",
         ) from e
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
+)
 async def deactivate_user(user_id: UUID, service: UserServiceDep) -> UserResponse:
     try:
         return await service.deactivate(user_id=user_id)
     except Exception as e:
         logger.exception(
-            f"Deactivation of new user with ID '{user_id}' failed!",
-        )  # log internally, keep external message generic
+            f"Deactivation of new user with ID {user_id!r} failed!",
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while removing user from database.",
