@@ -2,7 +2,7 @@ import typing
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
@@ -36,14 +36,14 @@ class Document(Base):
 
     # File details
     filename: Mapped[str] = mapped_column(String(255))
-    mime_type: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str | None] = mapped_column(String(255))
     document_type: Mapped[DocumentType | None] = mapped_column(
         Enum(DocumentType, name="documenttype", native_enum=True)
     )
     language: Mapped[LanguageType | None] = mapped_column(
         Enum(LanguageType, name="languagetype", native_enum=True)
     )
-    bucket_name: Mapped[str] = mapped_column(Text)
+    bucket_name: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(Text)
     storage_provider: Mapped[StorageProvider | None] = mapped_column(
         Enum(StorageProvider, name="storageprovider", native_enum=True)
@@ -57,7 +57,7 @@ class Document(Base):
     )  # -1 unknown size
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus", native_enum=True),
-        default=DocumentStatus.PENDING,
+        default=DocumentStatus.UPLOAD_PENDING,
     )
 
     # Audit information
@@ -85,4 +85,4 @@ class Document(Base):
     # )
 
     def __repr__(self) -> str:
-        return f"DocumentEntity(document_id={self.document_id!r}, "
+        return f"DocumentEntity(document_id={self.document_id!r}, filename={self.filename!s}"

@@ -2,14 +2,16 @@ import uuid
 from datetime import UTC, datetime
 
 from src.core.logger import get_logger
+from src.domain.credentials.entities import CredentialsEntity
+from src.domain.credentials.repository import CredentialsRepository
 from src.domain.users.dataclasses import User
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
 from src.domain.users.schemas import CurrentUser, UserResponse
-from src.shared.enums import UserRole, UserStatus
+from src.shared.enums import CredentialStatus, UserRole, UserStatus
 from src.utils.exceptions import UserNotFoundException, UserServiceError
 
-logger = get_logger("api-backend.domain.user.service")
+logger = get_logger("api.domain.user.service")
 
 
 class UserService:
@@ -17,9 +19,11 @@ class UserService:
 
     def __init__(
         self,
-        repository: UserRepository,
+        user_repository: UserRepository,
+        credentials_repository: CredentialsRepository,
     ) -> None:
-        self.repository = repository
+        self.user_repository = user_repository
+        self.credentials_repository = credentials_repository
 
     async def create(self, user: User, tenant_id: uuid.UUID) -> UserResponse:
         # Randomly generate new UUID
@@ -40,20 +44,32 @@ class UserService:
         )
 
         try:
-            db_user = await self.repository.create(entity)
+            db_user = await self.user_repository.create(entity)
+
+            # creade initial credentials
+            credentials_id = uuid.uuid4()
+            credentials = CredentialsEntity(
+                credentials_id=credentials_id,
+                user_id=db_user.user_id,
+                password_hash=user.password_hash,
+                status=CredentialStatus.CREATED,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.credentials_repository.create(credentials)
             return UserResponse(user_id=db_user.user_id, status=db_user.status)
         except Exception as e:
             logger.exception(
-                f"Failed to create new user with ID '{user_id}' in database!",
+                f"Failed to create new user with ID {user_id!r} in database!",
             )
             raise UserServiceError(
                 "Tenant Service Error",
-                f"Failed to create new user with ID '{user_id}' in database!",
+                f"Failed to create new user with ID {user_id!r} in database!",
             ) from e
 
     async def get(self, user_id: uuid.UUID) -> CurrentUser:
         try:
-            db_user = await self.repository.get(user_id)
+            db_user = await self.user_repository.get(user_id)
 
             if db_user is None:
                 raise UserNotFoundException(
@@ -63,20 +79,21 @@ class UserService:
             return CurrentUser(
                 user_id=db_user.user_id,
                 username=db_user.username,
+                email=db_user.email,
                 status=db_user.status,
             )
         except Exception as e:
             logger.exception(
-                f"Failed to get user with ID '{user_id}' from database!",
+                f"Failed to get user with ID {user_id!r} from database!",
             )
             raise UserServiceError(
                 "Tenant Service Error",
-                f"Failed to get user with ID '{user_id}' from database!",
+                f"Failed to get user with ID {user_id!r} from database!",
             ) from e
 
     async def update(self, user: User, user_id: uuid.UUID) -> CurrentUser:
         try:
-            db_user = await self.repository.get(user_id)
+            db_user = await self.user_repository.get(user_id)
 
             if db_user is None:
                 raise UserNotFoundException(
@@ -90,26 +107,27 @@ class UserService:
             db_user.mark_updated()
 
             # Update user information
-            updated = await self.repository.update(db_user)
+            updated = await self.user_repository.update(db_user)
 
             return CurrentUser(
                 user_id=updated.user_id,
+                email=updated.email,
                 username=updated.username,
                 status=db_user.status,
             )
 
         except Exception as e:
             logger.exception(
-                f"Failed to update user with ID '{user_id}' in database!",
+                f"Failed to update user with ID {user_id!r} in database!",
             )
             raise UserServiceError(
                 "Tenant Service Error",
-                f"Failed to update user with ID '{user_id}' in database!",
+                f"Failed to update user with ID {user_id!r} in database!",
             ) from e
 
     async def deactivate(self, user_id: uuid.UUID) -> UserResponse:
         try:
-            db_user = await self.repository.get(user_id)
+            db_user = await self.user_repository.get(user_id)
 
             if db_user is None:
                 raise UserNotFoundException(
@@ -117,16 +135,16 @@ class UserService:
                     message=f"Requested user with ID {user_id} not found!",
                 )
 
-            deleted_user = await self.repository.delete(db_user)
+            deleted_user = await self.user_repository.delete(db_user)
             return UserResponse(
                 user_id=deleted_user.user_id, status=deleted_user.status
             )
 
         except Exception as e:
             logger.exception(
-                f"Failed to delete user with ID '{user_id}' from database!",
+                f"Failed to delete user with ID {user_id!r} from database!",
             )
             raise UserServiceError(
                 "Tenant Service Error",
-                f"Failed to delete user with ID '{user_id}' from database!",
+                f"Failed to delete user with ID {user_id!r} from database!",
             ) from e

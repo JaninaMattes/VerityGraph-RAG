@@ -8,14 +8,16 @@ from src.domain.tenants.dataclasses import Tenant
 from src.domain.tenants.schemas import CurrentTenant, TenantResponse, UpdateRequest
 from src.domain.tenants.service import TenantService
 
-logger = get_logger("api-backend.routers.tenant")
+logger = get_logger("api.routers.tenant")
 
 TenantServiceDep = Annotated[TenantService, Depends(get_tenant_service)]
 
 router = APIRouter()
 
 
-@router.post("/tenants/register", status_code=status.HTTP_200_OK)
+@router.post(
+    "/tenants/register", status_code=status.HTTP_200_OK, response_model=TenantResponse
+)
 async def register(
     organisation: str,
     service: TenantServiceDep,
@@ -24,14 +26,16 @@ async def register(
         return await service.create(tenant=Tenant(organisation))
     except Exception as e:
         logger.exception(
-            f"Creation of new tenant for organisation '{organisation}' failed!",
+            f"Creation of new tenant for organisation {organisation!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal error occurred while creating new tenant entry in the database.",
         ) from e
 
-@router.get("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
+@router.get(
+    "/tenants/{tenant_id}", status_code=status.HTTP_200_OK, response_model=CurrentTenant
+)
 async def read_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
@@ -40,7 +44,7 @@ async def read_tenant(
         return await service.get(tenant_id=tenant_id)
     except Exception as e:
         logger.exception(
-            f"Retrieval of tenant with ID '{tenant_id}' failed!",
+            f"Retrieval of tenant with ID {tenant_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -48,7 +52,9 @@ async def read_tenant(
         ) from e
 
 
-@router.patch("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tenants/{tenant_id}", status_code=status.HTTP_200_OK, response_model=CurrentTenant
+)
 async def update_tenant(
     tenant_id: UUID,
     tenant: UpdateRequest,
@@ -60,7 +66,7 @@ async def update_tenant(
         )
     except Exception as e:
         logger.exception(
-            f"Retrieval of tenant with ID '{tenant_id}' failed!",
+            f"Retrieval of tenant with ID {tenant_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -68,7 +74,11 @@ async def update_tenant(
         ) from e
 
 
-@router.delete("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/tenants/{tenant_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=TenantResponse,
+)
 async def revoke_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
@@ -77,7 +87,7 @@ async def revoke_tenant(
         return await service.deactivate(tenant_id=tenant_id)
     except Exception as e:
         logger.exception(
-            f"Deactivation of tenant with ID '{tenant_id}' failed!",
+            f"Deactivation of tenant with ID {tenant_id!r} failed!",
         )  # log internally, keep external message generic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

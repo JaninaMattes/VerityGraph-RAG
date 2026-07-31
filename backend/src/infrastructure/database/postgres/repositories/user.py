@@ -9,7 +9,7 @@ from src.infrastructure.database.postgres.mapper.user import UserMapper
 from src.infrastructure.database.postgres.models.user import User
 from src.utils.exceptions import PostgreSQLOperationError, UserNotFoundException
 
-logger = get_logger("api-backend.infra.postgres.user")
+logger = get_logger("api.infra.postgres.user")
 
 
 class PostgresUserRepository(UserRepository):
@@ -32,12 +32,12 @@ class PostgresUserRepository(UserRepository):
             await self.session.refresh(db_user)
         except Exception as e:
             logger.exception(
-                f"Failed to create new user with ID '{user.user_id}' in database!",
+                f"Failed to create new user with ID {user.user_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to create new user with ID '{user.user_id}' in database!",
+                f"Failed to create new user with ID {user.user_id!r} in database!",
             ) from e
 
         return UserMapper.to_entity(db_user)  # after rerfesh
@@ -55,12 +55,12 @@ class PostgresUserRepository(UserRepository):
             await self.session.refresh(merged_user)
         except Exception as e:
             logger.exception(
-                f"Failed to update user with ID '{user.user_id}' in database!",
+                f"Failed to update user with ID {user.user_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to update user with ID '{user.user_id}' in database!",
+                f"Failed to update user with ID {user.user_id!r} in database!",
             ) from e
 
         return UserMapper.to_entity(merged_user)  # after refresh
@@ -70,12 +70,12 @@ class PostgresUserRepository(UserRepository):
             db_user = await self.session.get(User, user_id)
         except Exception as e:
             logger.exception(
-                f"Failed to get user with ID '{user_id}' from database!",
+                f"Failed to get user with ID {user_id!r} from database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to get user with ID '{user_id}' from database!",
+                f"Failed to get user with ID {user_id!r} from database!",
             ) from e
 
         if db_user is None:
@@ -99,12 +99,12 @@ class PostgresUserRepository(UserRepository):
             await self.session.commit()
         except Exception as e:
             logger.exception(
-                f"Failed to delete user with ID '{user.user_id}' in database!",
+                f"Failed to delete user with ID {user.user_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to delete user with ID '{user.user_id}' in database!",
+                f"Failed to delete user with ID {user.user_id!r} in database!",
             ) from e
 
         return UserMapper.to_entity(merged_user)

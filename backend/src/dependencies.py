@@ -12,6 +12,9 @@ from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
+from src.infrastructure.database.postgres.repositories.credentials import (
+    PostgresCredentialsRepository,
+)
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
@@ -67,6 +70,8 @@ def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
 def get_user_repository(session: DbSessionDep) -> PostgresUserRepository:
     return PostgresUserRepository(session=session)
 
+def get_credentials_repository(session: DbSessionDep) -> PostgresCredentialsRepository:
+    return PostgresCredentialsRepository(session=session)
 
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
@@ -74,7 +79,7 @@ def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository
 def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
-        bucket=settings.storage_default_buckets,
+        bucket_name=settings.storage_default_buckets,
         sse_key=SseCustomerKey(
             key=base64.b64decode(settings.storage_sse_customer_key)
         ),  # string to byte code
@@ -99,6 +104,11 @@ def get_tenant_service(
 
 
 def get_user_service(
-    repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
+    user_repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
+    credentials_repository: Annotated[
+        PostgresCredentialsRepository, Depends(get_credentials_repository)
+    ],
 ) -> UserService:
-    return UserService(repository=repository)
+    return UserService(
+        user_repository=user_repository, credentials_repository=credentials_repository
+    )

@@ -14,7 +14,7 @@ from src.utils.exceptions import (
 
 # Initialization before FastAPI constructed
 setup_logging(log_level="INFO")
-logger = get_logger("api-backend.main")
+logger = get_logger("api.main")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):

@@ -9,7 +9,7 @@ from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
 from src.infrastructure.database.postgres.models.tenant import Tenant
 from src.utils.exceptions import PostgreSQLOperationError, TenantNotFoundException
 
-logger = get_logger("api-backend.infra.postgres.tenant")
+logger = get_logger("api.infra.postgres.tenant")
 
 
 class PostgresTenantRepository(TenantRepository):
@@ -32,12 +32,12 @@ class PostgresTenantRepository(TenantRepository):
             await self.session.refresh(db_tenant)
         except Exception as e:
             logger.exception(
-                f"Failed to create new tenant with ID '{tenant.tenant_id}' in database!",
+                f"Failed to create new tenant with ID {tenant.tenant_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to create new tenant with ID '{tenant.tenant_id}' in database!",
+                f"Failed to create new tenant with ID {tenant.tenant_id!r} in database!",
             ) from e
 
         return TenantMapper.to_entity(db_tenant)  # after rerfesh
@@ -56,12 +56,12 @@ class PostgresTenantRepository(TenantRepository):
             await self.session.refresh(merged_tenant)
         except Exception as e:
             logger.exception(
-                f"Failed to update tenant with ID '{tenant.tenant_id}' in database!",
+                f"Failed to update tenant with ID {tenant.tenant_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to update tenant with ID '{tenant.tenant_id}' in database!",
+                f"Failed to update tenant with ID {tenant.tenant_id!r} in database!",
             ) from e
 
         return TenantMapper.to_entity(merged_tenant)  # after refresh
@@ -71,12 +71,12 @@ class PostgresTenantRepository(TenantRepository):
             db_tenant = await self.session.get(Tenant, tenant_id)
         except Exception as e:
             logger.exception(
-                f"Failed to get tenant with ID '{tenant_id}' in database!",
+                f"Failed to get tenant with ID {tenant_id!r} in database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to get tenant with ID '{tenant_id}' in database!",
+                f"Failed to get tenant with ID {tenant_id!r} in database!",
             ) from e
 
         if db_tenant is None:
@@ -100,12 +100,12 @@ class PostgresTenantRepository(TenantRepository):
             await self.session.commit()
         except Exception as e:
             logger.exception(
-                f"Failed to delete tenant with ID '{tenant.tenant_id}' from database!",
+                f"Failed to delete tenant with ID {tenant.tenant_id!r} from database!",
             )
             await self.session.rollback()
             raise PostgreSQLOperationError(
                 "PostgreSQL Repository Error",
-                f"Failed to delete tenant with ID '{tenant.tenant_id}' from database!",
+                f"Failed to delete tenant with ID {tenant.tenant_id!r} from database!",
             ) from e
 
         return TenantMapper.to_entity(merged_tenant)

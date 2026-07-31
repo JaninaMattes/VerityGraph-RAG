@@ -3,7 +3,7 @@ import typing
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import ARRAY, UUID, DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import ARRAY, UUID, DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base

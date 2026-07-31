@@ -9,7 +9,7 @@ from src.domain.tenants.schemas import CurrentTenant, TenantResponse
 from src.shared.enums import TenantStatus
 from src.utils.exceptions import TenantNotFoundException, TenantServiceError
 
-logger = get_logger("api-backend.domain.tenant.service")
+logger = get_logger("api.domain.tenant.service")
 
 
 class TenantService:
@@ -40,11 +40,11 @@ class TenantService:
             )
         except Exception as e:
             logger.exception(
-                f"Failed to create tenant entry '{tenant_id}' in DB!",
+                f"Failed to create tenant entry {tenant_id!r} in DB!",
             )
             raise TenantServiceError(
                 "Tenant Service Error",
-                f"Failed to create tenant entry '{tenant_id}' in DB!",
+                f"Failed to create tenant entry {tenant_id!r} in DB!",
             ) from e
 
     async def get(self, tenant_id: uuid.UUID) -> CurrentTenant:
@@ -63,11 +63,11 @@ class TenantService:
             )
         except Exception as e:
             logger.exception(
-                f"Failed to retrieve tenant with ID '{tenant_id}' from database!",
+                f"Failed to retrieve tenant with ID {tenant_id!r} from database!",
             )
             raise TenantServiceError(
                 "Tenant Service Error",
-                f"Failed to retrieve tenant with ID '{tenant_id}' from database!",
+                f"Failed to retrieve tenant with ID {tenant_id!r} from database!",
             ) from e
 
     async def update(self, tenant: Tenant, tenant_id: uuid.UUID) -> CurrentTenant:
@@ -95,11 +95,11 @@ class TenantService:
 
         except Exception as e:
             logger.exception(
-                f"Failed to update tenant with ID '{tenant_id}' in database!",
+                f"Failed to update tenant with ID {tenant_id!r} in database!",
             )
             raise TenantServiceError(
                 "Tenant Service Error",
-                f"Failed to update tenant with ID '{tenant_id}' in database!",
+                f"Failed to update tenant with ID {tenant_id!r} in database!",
             ) from e
 
     async def deactivate(self, tenant_id: uuid.UUID) -> TenantResponse:
@@ -119,9 +119,9 @@ class TenantService:
 
         except Exception as e:
             logger.exception(
-                f"Failed to delete tenant with ID '{tenant_id}' in database!"
+                f"Failed to delete tenant with ID {tenant_id!r} in database!"
             )
             raise TenantServiceError(
                 "Tenant Service Error",
-                f"Failed to delete tenant with ID '{tenant_id}' in database!",
+                f"Failed to delete tenant with ID {tenant_id!r} in database!",
             ) from e

@@ -9,6 +9,10 @@ class TenantNotFoundException(Exception):
         self.name = name
         self.message = message
 
+class CredentialsNotFoundException(Exception):
+    def __init__(self, name: str, message: str):
+        self.name = name
+        self.message = message
 
 class UserNotFoundException(Exception):
     def __init__(self, name: str, message: str):

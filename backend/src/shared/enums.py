@@ -46,7 +46,7 @@ class DocumentType(StrEnum):
 
 
 class DocumentStatus(StrEnum):
-    PENDING = "pending"
+    UPLOAD_PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
     READY = "ready"

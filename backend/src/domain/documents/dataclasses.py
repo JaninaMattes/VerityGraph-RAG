@@ -1,22 +1,9 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hashlib import sha256
-from typing import BinaryIO
 from uuid import UUID
 
-
-@dataclass(slots=True, frozen=True)
-class DocumentStream:
-    """
-    Domain representation of an incoming document.
-
-    This object is independent of FastAPI's UploadFile and can be created from
-    uploads, local files, web crawlers, S3 downloads, etc.
-    """
-
-    stream: BinaryIO
-    filename: str
-    content_type: str | None
-    size_bytes: int | None
+from src.shared.enums import DocumentStatus, DocumentType, LanguageType, StorageProvider
 
 
 @dataclass(slots=True, frozen=True)
@@ -35,8 +22,10 @@ class StorageKey:
         document_id: UUID,
         namespace: str = "documents",
         extension: str | None = None,
-    ):
-        key = f"{tenant_id}/{namespace}/{document_id}"
+    ) -> "StorageKey":
+        now = datetime.now(UTC)
+
+        key = f"{tenant_id}/{namespace}/{now.year}/{now.month:02d}/{document_id}"
 
         if extension:
             key += f".{extension.lstrip('.')}"
@@ -72,9 +61,25 @@ class StoredFile:
     """
 
     storage_key: StorageKey
-    mime_type: str
-    checksum: DocumentChecksum
+    mime_type: str | None
     size_bytes: int
-    bucket_name: str | None = None
-    version_id: str | None = None
-    etag: str | None = None
+    bucket_name: str | None
+    version_id: str | None
+    etag: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class Document:
+    filename: str
+    mime_type: str
+    size_bytes: int
+    bucket_name: str
+    storage_provider: StorageProvider
+    status: DocumentStatus
+    created_at: datetime
+    updated_at: datetime
+    checksum: DocumentChecksum | None
+    document_type: DocumentType | None
+    language: LanguageType | None
+    version_id: str | None
+    etag: str | None
