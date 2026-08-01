@@ -32,46 +32,16 @@ router = APIRouter()
 async def register(
     tenant_id: UUID, user: RegisterRequest, service: UserServiceDep
 ) -> UserResponse:
-    try:
-        return await service.create(
-            User(user.username, user.email, user.password_hash),
-            tenant_id=tenant_id,
-        )
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_412_PRECONDITION_FAILED,
-            detail=exc.message,
-        ) from exc
-
-    except UserServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=exc.message,
-        ) from exc
-
+    return await service.create(
+        User(user.username, user.email, user.password_hash),
+        tenant_id=tenant_id,
+    )
 
 @router.get(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=CurrentUser
 )
 async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
-    try:
-        return await service.get(user_id=user_id)
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-
-    except UserServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=exc.message,
-        ) from exc
-
+    return await service.get(user_id=user_id)
 
 @router.patch(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=CurrentUser
@@ -79,45 +49,12 @@ async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
 async def update_user(
     user_id: UUID, user: UpdateRequest, service: UserServiceDep
 ) -> CurrentUser:
-    try:
-        return await service.update(
-            user_id=user_id, user=UpdateUser(username=user.username, email=user.email)
-        )
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-
-    except UserServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=exc.message,
-        ) from exc
-
+    return await service.update(
+        user_id=user_id, user=UpdateUser(username=user.username, email=user.email)
+    )
 
 @router.delete(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
 )
 async def deactivate_user(user_id: UUID, service: UserServiceDep) -> UserResponse:
-    try:
-        return await service.deactivate(user_id=user_id)
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-
-    except UserServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=exc.message,
-        ) from exc
+    return await service.deactivate(user_id=user_id)

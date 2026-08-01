@@ -79,8 +79,11 @@ class CredentialsNotFoundException(NotFoundException):
 # Document Exceptions
 # ============================================================
 
+class DomainException(ApplicationException):
+    """Business rule violations."""
 
-class DocumentNotReadyException(ApplicationException):
+
+class DocumentNotReadyException(DomainException):
     """
     Document exists but cannot currently be processed.
     """
@@ -168,8 +171,7 @@ class StorageOperationException(StorageException):
 
     def __init__(self, bucket_name: str, description: str):
         super().__init__(
-            f"Storage encountered an unexpected internal cluster error for '{bucket_name}'. \
-            {description}."
+            f"Storage operation failed for bucket '{bucket_name}'. {description}"
         )
 
         self.bucket_name = bucket_name
