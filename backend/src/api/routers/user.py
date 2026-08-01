@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from src.core.logger import get_logger
 from src.dependencies import get_user_service
-from src.domain.users.dataclasses import User
+from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.schemas import (
     CurrentUser,
     RegisterRequest,
@@ -12,6 +12,11 @@ from src.domain.users.schemas import (
     UserResponse,
 )
 from src.domain.users.service import UserService
+from src.utils.exceptions import (
+    DatabaseException,
+    NotFoundException,
+    UserServiceException,
+)
 
 logger = get_logger("api.routers.user")
 
@@ -32,14 +37,17 @@ async def register(
             User(user.username, user.email, user.password_hash),
             tenant_id=tenant_id,
         )
-    except Exception as e:
-        logger.exception(
-            f"Creation of new user with email {user.email!r} and name {user.username!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail=exc.message,
+        ) from exc
+
+    except UserServiceException as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while creating new user entry.",
-        ) from e
+            detail=exc.message,
+        ) from exc
 
 
 @router.get(
@@ -48,14 +56,21 @@ async def register(
 async def read_user(user_id: UUID, service: UserServiceDep) -> CurrentUser:
     try:
         return await service.get(user_id=user_id)
-    except Exception as e:
-        logger.exception(
-            f"Creation of new user with ID {user_id!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+
+    except UserServiceException as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while searching for user.",
-        ) from e
+            detail=exc.message,
+        ) from exc
 
 
 @router.patch(
@@ -66,16 +81,23 @@ async def update_user(
 ) -> CurrentUser:
     try:
         return await service.update(
-            user_id=user_id, user=User(username=user.username, email=user.email)
+            user_id=user_id, user=UpdateUser(username=user.username, email=user.email)
         )
-    except Exception as e:
-        logger.exception(
-            f"Creation of new user with ID {user_id!r} failed!",
-        )
+    except DatabaseException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+
+    except UserServiceException as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while searching for user.",
-        ) from e
+            detail=exc.message,
+        ) from exc
 
 
 @router.delete(
@@ -84,11 +106,18 @@ async def update_user(
 async def deactivate_user(user_id: UUID, service: UserServiceDep) -> UserResponse:
     try:
         return await service.deactivate(user_id=user_id)
-    except Exception as e:
-        logger.exception(
-            f"Deactivation of new user with ID {user_id!r} failed!",
-        )
+    except DatabaseException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+
+    except UserServiceException as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while removing user from database.",
-        ) from e
+            detail=exc.message,
+        ) from exc

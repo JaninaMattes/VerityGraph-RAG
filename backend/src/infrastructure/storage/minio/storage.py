@@ -5,177 +5,163 @@ from minio.sse import SseCustomerKey
 
 from src.core.logger import get_logger
 from src.domain.documents.dataclasses import (
-    DocumentChecksum,
-    DocumentStream,
     StorageKey,
     StoredFile,
 )
 from src.infrastructure.storage.provider import StorageProvider
-from src.utils.exceptions import StorageOperationError
+from src.utils.exceptions import (
+    AccessDeniedException,
+    ObjectNotFoundException,
+    StorageOperationException,
+)
 
-logger = get_logger("api-backend.infra.minio")
-
-
-DEFAULT_PART_SIZE = 10 * 1024 * 1024
-
+logger = get_logger("api.infra.minio")
 
 class MinioStorage(StorageProvider):
     def __init__(
         self,
         client: Minio,
-        bucket: str,
+        bucket_name: str,
         sse_key: SseCustomerKey | None = None,
     ) -> None:
         self.client = client
-        self.bucket_name = bucket
+        self.bucket_name = bucket_name
         self.sse_key = sse_key
+
 
     def create_bucket(self) -> None:
         """Checks if bucket already exists for warm start."""
-        found = self.client.bucket_exists(bucket_name=self.bucket_name)
-        if not found:
-            self.client.make_bucket(bucket_name=self.bucket_name)
-            logger.info(f"Minio bucket {self.bucket_name} created.")
+        try:
+            found = self.client.bucket_exists(bucket_name=self.bucket_name)
+            if not found:
+                self.client.make_bucket(bucket_name=self.bucket_name)
+                logger.info(f"A bucket with name {self.bucket_name} was created.")
+            else:
+                logger.info(f"A bucket with name {self.bucket_name} already exists.")
+        except S3Error as exc:
+            if exc.code == "AccessDenied" or exc.code == "InvalidAccessKeyId":
+                logger.warning(
+                    "Access to bucket %s denied due to missing permissions or bad credentials.",
+                    self.bucket_name,
+                )
+                raise AccessDeniedException(
+                    bucket_name=self.bucket_name,
+                ) from exc
+            logger.warning(
+                "Raised error for bucket %s. "
+                "This could be due to an invalid or conflicting function argument.",
+                self.bucket_name,
+            )
+            raise StorageOperationException(
+                f"Failed to create bucket '{self.bucket_name}'."
+            ) from exc
 
-    def create_upload_url(self, storage_key: StorageKey, expires_at: timedelta) -> str:
-        """Get presigned URL string to upload 'bucket-object' in MinIO bucket
-        with response-content-type as application/json and one two hour expiry.
+    def create_presigned_url(
+        self, storage_key: StorageKey, expires_at: timedelta, method="PUT"
+    ) -> str:
+        """
+        Generate a presigned PUT URL for an object.
+        The response-content-type as application/json and one two hour expiry.
         """
         try:
             return self.client.get_presigned_url(
-                method="PUT",
+                method=method,
                 bucket_name=self.bucket_name,
                 object_name=storage_key.value,
                 expires=expires_at,
                 extra_query_params={"response-content-type": "application/json"},
             )
-        except S3Error as e:
-            logger.exception(
-                f"Failed to generate presigned upload URL for '{storage_key}' with MinIO!",
+        except S3Error as exc:
+            logger.warning(
+                "Raised storage related error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                storage_key,
+                self.bucket_name,
             )
-            raise StorageOperationError(
-                "MinIO Storage Error",
-                f"Failed to generate presigned upload URL for '{storage_key}' with MinIO!",
-            ) from e
+            raise StorageOperationException(
+                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
+            ) from exc
 
     def create_download_url(
-        self, storage_key: StorageKey, expires_at: timedelta
+        self, storage_key: StorageKey, expires_at: timedelta, method="GET"
     ) -> str:
-        """Get presigned URL string to download 'bucket-object' in MinIO bucket
+        """Generate a presigned GET URL for an object.
         with two hour expiry.
         """
         try:
             return self.client.get_presigned_url(
-                method="GET",
+                method=method,
                 bucket_name=self.bucket_name,
                 object_name=storage_key.value,
                 expires=expires_at,
             )
-        except S3Error as e:
-            logger.exception(
-                f"Failed to generate presigned download URL for '{storage_key}' with MinIO!",
+        except S3Error as exc:
+            logger.warning(
+                "Raised storage related error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                storage_key,
+                self.bucket_name,
             )
-            raise StorageOperationError(
-                "MinIO Storage Error",
-                f"Failed to generate presigned download URL for '{storage_key}' with MinIO!",
-            ) from e
+            raise StorageOperationException(
+                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
+            ) from exc
 
-    def create_delete_url(self, storage_key: StorageKey, expires_at: timedelta) -> str:
-        """Get presigned URL string to delete 'bucket-object' in MinIO bucket
+    def create_delete_url(
+        self, storage_key: StorageKey, expires_at: timedelta, method="DELETE"
+    ) -> str:
+        """Generate a presigned DELETE URL for an object.
         with one day expiry.
         """
         try:
             return self.client.get_presigned_url(
-                method="DELETE",
+                method=method,
                 bucket_name=self.bucket_name,
                 object_name=storage_key.value,
                 expires=expires_at,
             )
-        except S3Error as e:
-            logger.exception(
-                f"Failed to generate presigned URL for '{storage_key}' with MinIO!",
+        except S3Error as exc:
+            logger.warning(
+                "Raised error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                storage_key,
+                self.bucket_name,
             )
-            raise StorageOperationError(
-                "MinIO Storage Error",
-                f"Failed to generate presigned URL for '{storage_key}' with MinIO!",
-            ) from e
+            raise StorageOperationException(
+                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
+            ) from exc
 
-    def store_file(
+    def get_obj_metadata(
         self,
-        file: DocumentStream,
         storage_key: StorageKey,
-        checksum: DocumentChecksum | None = None,
     ) -> StoredFile:
-        """
-        Uploads a document stream to MinIO blob storage.
-        """
-        # Determine size parameters
-        length = file.size_bytes if file.size_bytes is not None else -1
-        part_size = DEFAULT_PART_SIZE if length == -1 else 0
-        content_type = file.content_type or "application/octet-stream"
-
+        """Get 'bucket-object' information from MinIO bucket."""
         try:
-            uploaded_file = self.client.put_object(
+            metadata = self.client.stat_object(
                 bucket_name=self.bucket_name,
                 object_name=storage_key.value,
-                data=file.stream,
-                length=length,
-                part_size=part_size,
-                content_type=content_type,
-                sse=self.sse_key,  # from dotenv file
             )
-
-            logger.info(
-                f"Successfully uploaded '{uploaded_file.object_name}' to MinIO bucket '{self.bucket_name}'",
-                extra={
-                    "storage_key": storage_key,
-                    "bucket": self.bucket_name,
-                    "etag": uploaded_file.etag,
-                    "version_id": uploaded_file.version_id,
-                },
-            )
-
-            # Construct the returned domain model
+            assert metadata.size is not None
             return StoredFile(
-                storage_key=StorageKey(uploaded_file.object_name),
-                size_bytes=file.size_bytes
-                if file.size_bytes is not None
-                else 0,  # TODO: track actual bytes written
-                mime_type=content_type,
-                version_id=uploaded_file.version_id,
-                bucket_name=uploaded_file.bucket_name,
-                etag=uploaded_file.etag,
-                checksum=checksum or DocumentChecksum(""),
+                storage_key=storage_key,
+                mime_type=metadata.content_type,
+                size_bytes=metadata.size,
+                bucket_name=metadata.bucket_name,
+                version_id=metadata.version_id,
+                etag=metadata.etag,
             )
-
-        except S3Error as e:
-            logger.exception(
-                f"Failed to upload binary file '{storage_key}' from MinIO!",
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                logger.warning(
+                    "Object %s not found in bucket %s.",
+                    storage_key,
+                    self.bucket_name,
+                )
+                raise ObjectNotFoundException(
+                    storage_key=storage_key.value,
+                    bucket_name=self.bucket_name,
+                ) from exc
+            logger.warning(
+                "Raised error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                storage_key,
+                self.bucket_name,
             )
-            raise StorageOperationError(
-                "MinIO Storage Error",
-                f"Failed to upload binary file '{storage_key}' from MinIO!",
-            ) from e
-
-
-    def delete_file(
-        self,
-        storage_key: StorageKey,
-    ) -> None:
-        try:
-            self.client.remove_object(self.bucket_name, storage_key.value)
-            logger.info(
-                f"Successfully removed '{storage_key}' from MinIO bucket '{self.bucket_name}'",
-                extra={
-                    "storage_key": storage_key,
-                    "bucket": self.bucket_name,
-                },
-            )
-        except S3Error as e:
-            logger.exception(
-                f"Failed to remove binary file '{storage_key}' from MinIO!",
-            )
-            raise StorageOperationError(
-                "MinIO Storage Error",
-                f"Failed to remove binary file '{storage_key}' from MinIO!",
-            ) from e
+            raise StorageOperationException(
+                f"Failed to get statistical data for object '{storage_key}'."
+            ) from exc
