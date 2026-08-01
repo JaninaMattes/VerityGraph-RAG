@@ -9,7 +9,7 @@ from src.infrastructure.database.postgres.base import Base
 from src.shared.enums import CredentialStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User  # noqa: TC004
+    from .user import User
 
 
 class UserCredentials(Base):

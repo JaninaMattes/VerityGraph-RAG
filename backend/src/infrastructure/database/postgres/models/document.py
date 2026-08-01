@@ -14,7 +14,7 @@ from src.shared.enums import (
 )
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant  # noqa: TC004
+    from .tenant import Tenant
 
 
 class Document(Base):
@@ -54,7 +54,7 @@ class Document(Base):
     checksum: Mapped[str | None] = mapped_column(String(64), index=True)
     size_bytes: Mapped[int] = mapped_column(
         BigInteger, default=-1, server_default="-1"
-    )  # -1 unknown size
+    )  # -1 space holder for unknown size
     status: Mapped[DocumentStatus] = mapped_column(
         Enum(DocumentStatus, name="documentstatus", native_enum=True),
         default=DocumentStatus.UPLOAD_PENDING,
