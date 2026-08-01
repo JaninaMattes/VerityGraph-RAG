@@ -53,14 +53,15 @@ class MinioStorage(StorageProvider):
                 self.bucket_name,
             )
             raise StorageOperationException(
-                f"Failed to create bucket '{self.bucket_name}'."
+                self.bucket_name,
+                description="Creating a new bucket failed.",
             ) from exc
 
     def create_presigned_url(
-        self, storage_key: StorageKey, expires_at: timedelta, method="PUT"
+        self, storage_key: StorageKey, expires_at: timedelta, method: str
     ) -> str:
         """
-        Generate a presigned PUT URL for an object.
+        Generate a presigned URL for an object in storage.
         The response-content-type as application/json and one two hour expiry.
         """
         try:
@@ -69,62 +70,26 @@ class MinioStorage(StorageProvider):
                 bucket_name=self.bucket_name,
                 object_name=storage_key.value,
                 expires=expires_at,
-                extra_query_params={"response-content-type": "application/json"},
             )
         except S3Error as exc:
-            logger.warning(
-                "Raised storage related error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
-                storage_key,
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
-            ) from exc
-
-    def create_download_url(
-        self, storage_key: StorageKey, expires_at: timedelta, method="GET"
-    ) -> str:
-        """Generate a presigned GET URL for an object.
-        with two hour expiry.
-        """
-        try:
-            return self.client.get_presigned_url(
-                method=method,
-                bucket_name=self.bucket_name,
-                object_name=storage_key.value,
-                expires=expires_at,
-            )
-        except S3Error as exc:
-            logger.warning(
-                "Raised storage related error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
-                storage_key,
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
-            ) from exc
-
-    def create_delete_url(
-        self, storage_key: StorageKey, expires_at: timedelta, method="DELETE"
-    ) -> str:
-        """Generate a presigned DELETE URL for an object.
-        with one day expiry.
-        """
-        try:
-            return self.client.get_presigned_url(
-                method=method,
-                bucket_name=self.bucket_name,
-                object_name=storage_key.value,
-                expires=expires_at,
-            )
-        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                logger.warning(
+                    "The specified object key %s does not exist in the bucket %s.",
+                    storage_key,
+                    self.bucket_name,
+                )
+                raise ObjectNotFoundException(
+                    storage_key=storage_key.value,
+                    bucket_name=self.bucket_name,
+                ) from exc
             logger.warning(
                 "Raised error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
                 storage_key,
                 self.bucket_name,
             )
             raise StorageOperationException(
-                f"Failed to generate presigned '{method}' URL for object '{storage_key}'."
+                self.bucket_name,
+                description=f"Generating presigned {method} URL failed.",
             ) from exc
 
     def get_obj_metadata(
@@ -149,7 +114,7 @@ class MinioStorage(StorageProvider):
         except S3Error as exc:
             if exc.code == "NoSuchKey":
                 logger.warning(
-                    "Object %s not found in bucket %s.",
+                    "The specified object key %s does not exist in the bucket %s.",
                     storage_key,
                     self.bucket_name,
                 )
@@ -163,5 +128,6 @@ class MinioStorage(StorageProvider):
                 self.bucket_name,
             )
             raise StorageOperationException(
-                f"Failed to get statistical data for object '{storage_key}'."
+                self.bucket_name,
+                description=f" Gathering of statistical data for object '{storage_key}' failed.",
             ) from exc
