@@ -15,6 +15,12 @@ from src.domain.documents.schemas import (
     URLResponse,
 )
 from src.domain.documents.service import DocumentService
+from src.utils.exceptions import (
+    DatabaseException,
+    DocumentServiceException,
+    NotFoundException,
+    StorageException,
+)
 
 logger = get_logger("api.routers.document")
 
@@ -33,19 +39,50 @@ async def create_upload_url(
     current_user: CurrentUserDep,
     namespace: str = "documents",
 ) -> URLResponse:
-    tenant_id = current_user.tenant_id
     try:
-        return await service.create_upload_url(
-            tenant_id, file=file, namespace=namespace
-        )
-    except Exception as e:
-        logger.exception(
-            f"Creation of presigned upload URL for user with ID {current_user.user_id!r} failed!",
-        )  # log internally, keep external message generic
+        return await service.create_upload_url(file=file, namespace=namespace)
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while generating the presigned upload URL.",
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except StorageException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=exc.message
+        ) from exc
+
+    except DocumentServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
+
+
+@router.get(
+    "/documents/{document_id}/download",
+    status_code=status.HTTP_200_OK,
+    response_model=URLResponse,
+)
+async def create_download_url(
+    document_id: uuid.UUID,
+    service: DocServiceDep,
+    current_user: CurrentUserDep,
+) -> URLResponse:
+    try:
+        return await service.create_download_url(document_id)
+    except DatabaseException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except StorageException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=exc.message
+        ) from exc
+
+    except DocumentServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
 
 @router.patch(
     "/documents/{document_id}/complete",
@@ -58,37 +95,22 @@ async def complete(
     current_user: CurrentUserDep,
 ) -> MetadataResponse:
     try:
-        return await service.update_metadata(document_id=document_id)
-    except Exception as e:
-        logger.exception(
-            f"Update of metadata for document with ID {document_id!r} failed!",
-        )  # log internally, keep external message generic
+        return await service.update_metadata(document_id)
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while updating document information.",
-        ) from e
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail=exc.message,
+        ) from exc
 
-@router.get(
-    "/documents/{document_id}/download",
-    status_code=status.HTTP_200_OK,
-    response_model=URLResponse,
-)
-async def create_download_url(
-    document_id: uuid.UUID,
-    service: DocServiceDep,
-    current_user: CurrentUserDep,
-) -> URLResponse:
-    tenant_id = current_user.tenant_id
-    try:
-        return await service.create_download_url(document_id, tenant_id)
-    except Exception as e:
-        logger.exception(
-            f"Creation of presigned download URL for document with ID {document_id!r} failed!",
-        )  # log internally, keep external message generic
+    except NotFoundException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while generating the presigned download URL.",
-        ) from e
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+
+    except DocumentServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
 
 
 @router.delete(
@@ -96,22 +118,29 @@ async def create_download_url(
     status_code=status.HTTP_200_OK,
     response_model=DeleteResponse,
 )
-async def delete_documents(
+async def remove_document(
     document_id: uuid.UUID,
     service: DocServiceDep,
     current_user: CurrentUserDep,
 ) -> DeleteResponse:
-    tenant_id = current_user.tenant_id
+
+    # Retrieve current user
+    user_id = current_user.user_id
 
     try:
-        return await service.delete(document_id, tenant_id)
+        return await service.delete(document_id, user_id)
 
-    except Exception as e:
-        logger.exception(
-            f"Deletion of document with ID {document_id!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while processing "
-            "and removing the document from storage.",
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+
+    except DocumentServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc

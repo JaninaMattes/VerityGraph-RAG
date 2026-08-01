@@ -2,11 +2,17 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
 from src.core.logger import get_logger
 from src.dependencies import get_tenant_service
 from src.domain.tenants.dataclasses import Tenant
 from src.domain.tenants.schemas import CurrentTenant, TenantResponse, UpdateRequest
 from src.domain.tenants.service import TenantService
+from src.utils.exceptions import (
+    DatabaseException,
+    NotFoundException,
+    TenantServiceException,
+)
 
 logger = get_logger("api.routers.tenant")
 
@@ -24,14 +30,15 @@ async def register(
 ) -> TenantResponse:
     try:
         return await service.create(tenant=Tenant(organisation))
-    except Exception as e:
-        logger.exception(
-            f"Creation of new tenant for organisation {organisation!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while creating new tenant entry in the database.",
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    except TenantServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
+
 
 @router.get(
     "/tenants/{tenant_id}", status_code=status.HTTP_200_OK, response_model=CurrentTenant
@@ -42,15 +49,18 @@ async def read_tenant(
 ) -> CurrentTenant:
     try:
         return await service.get(tenant_id=tenant_id)
-    except Exception as e:
-        logger.exception(
-            f"Retrieval of tenant with ID {tenant_id!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while searching for tenant.",
-        ) from e
-
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+    except TenantServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
 
 @router.patch(
     "/tenants/{tenant_id}", status_code=status.HTTP_200_OK, response_model=CurrentTenant
@@ -64,14 +74,18 @@ async def update_tenant(
         return await service.update(
             tenant_id=tenant_id, tenant=Tenant(tenant.organisation)
         )
-    except Exception as e:
-        logger.exception(
-            f"Retrieval of tenant with ID {tenant_id!r} failed!",
-        )  # log internally, keep external message generic
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while searching for tenant.",
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+    except TenantServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
 
 
 @router.delete(
@@ -84,12 +98,16 @@ async def revoke_tenant(
     service: TenantServiceDep,
 ) -> TenantResponse:
     try:
-        return await service.deactivate(tenant_id=tenant_id)
-    except Exception as e:
-        logger.exception(
-            f"Deactivation of tenant with ID {tenant_id!r} failed!",
-        )  # log internally, keep external message generic
+        return await service.delete(tenant_id=tenant_id)
+    except DatabaseException as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred while removing a tenant from database.",
-        ) from e
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    except NotFoundException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
+        ) from exc
+    except TenantServiceException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
+        ) from exc
