@@ -33,7 +33,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 async def tenant_exception_handler(request: Request, exc: TenantNotFoundException):
     return JSONResponse(
         status_code=418,
-        content={"message": f"{exc.name}: {exc.message}"},
+        content={"message": f"tenant id: {exc.tenant_id}, message: {exc.message}"},
     )
 
 
@@ -41,7 +41,7 @@ async def tenant_exception_handler(request: Request, exc: TenantNotFoundExceptio
 async def user_exception_handler(request: Request, exc: UserNotFoundException):
     return JSONResponse(
         status_code=418,
-        content={"message": f"{exc.name}: {exc.message}"},
+        content={"message": f"user id: {exc.user_id}, message: {exc.message}"},
     )
 
 
@@ -49,7 +49,15 @@ async def user_exception_handler(request: Request, exc: UserNotFoundException):
 async def document_exception_handler(request: Request, exc: DocumentNotFoundException):
     return JSONResponse(
         status_code=418,
-        content={"message": f"{exc.name}: {exc.message}"},
+        content={"message": f"document id: {exc.document_id}, message: {exc.message}"},
+    )
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Unexcpected sever-side exception."},
     )
 
 
