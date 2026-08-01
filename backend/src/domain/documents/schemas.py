@@ -9,6 +9,7 @@ from src.shared.enums import DocumentStatus
 
 class MetadataRequest(BaseModel):
     filename: str
+    tenant_id: UUID
 
 
 class MetadataResponse(BaseModel):

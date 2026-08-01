@@ -90,11 +90,11 @@ class DocumentEntity:
         self.updated_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
-    def mark_deleted(self, tenant_id: UUID) -> None:
+    def mark_deleted(self, user_id: UUID) -> None:
         self.status = DocumentStatus.DELETED
         self.deleted_at = datetime.now(UTC)
         self.deleted_at = datetime.now(UTC)
-        self.deleted_by = tenant_id
+        self.deleted_by = user_id
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DocumentEntity):
