@@ -200,6 +200,13 @@ class ServiceException(ApplicationException):
     Base exception for service layer failures.
     """
 
+class AuthServiceException(ServiceException):
+    """
+    Document service failure.
+
+    Replaces:
+        DocumentServiceError
+    """
 
 class DocumentServiceException(ServiceException):
     """

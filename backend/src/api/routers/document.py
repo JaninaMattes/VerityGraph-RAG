@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from src.core.logger import get_logger
 from src.dependencies import (
     get_current_user,
@@ -15,12 +15,6 @@ from src.domain.documents.schemas import (
     URLResponse,
 )
 from src.domain.documents.service import DocumentService
-from src.utils.exceptions import (
-    DatabaseException,
-    DocumentServiceException,
-    NotFoundException,
-    StorageException,
-)
 
 logger = get_logger("api.routers.document")
 
