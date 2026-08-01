@@ -8,6 +8,7 @@ from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import Settings, get_settings
+from src.core.logger import get_logger
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
@@ -26,8 +27,10 @@ from src.infrastructure.database.postgres.repositories.user import (
 )
 from src.infrastructure.database.postgres.session import get_db_session
 from src.infrastructure.storage.minio.storage import MinioStorage
+from src.utils.exceptions import StorageException
 from src.workflows.client import WorkflowClient
 
+logger = get_logger("api.dependencies")
 
 # Dummy user authentication dependency
 def get_current_user() -> Principal:
@@ -84,7 +87,12 @@ def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> Minio
             key=base64.b64decode(settings.storage_sse_customer_key)
         ),  # string to byte code
     )
-    storage.create_bucket()  # TODO: Move to CI/CD pipeline
+    try:
+        storage.create_bucket()  # TODO: Move to CI/CD pipeline
+    except StorageException as exc:
+        logger.warning(
+            "Bucket couldn't be created.", extra={"error message": exc.message}
+        )
     return storage
 
 

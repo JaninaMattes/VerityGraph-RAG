@@ -11,7 +11,7 @@ from src.infrastructure.database.postgres.models.credentials import UserCredenti
 from src.shared.enums import UserRole, UserStatus
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant  # noqa: TC004
+    from .tenant import Tenant
 
 
 class User(Base):
