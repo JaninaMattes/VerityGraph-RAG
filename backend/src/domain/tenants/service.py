@@ -7,7 +7,12 @@ from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
 from src.domain.tenants.schemas import CurrentTenant, TenantResponse
 from src.shared.enums import TenantStatus
-from src.utils.exceptions import TenantNotFoundException, TenantServiceError
+from src.utils.exceptions import (
+    DatabaseException,
+    NotFoundException,
+    TenantNotFoundException,
+    TenantServiceException,
+)
 
 logger = get_logger("api.domain.tenant.service")
 
@@ -38,47 +43,54 @@ class TenantService:
             return TenantResponse(
                 tenant_id=db_tenant.tenant_id, status=db_tenant.status
             )
-        except Exception as e:
-            logger.exception(
-                f"Failed to create tenant entry {tenant_id!r} in DB!",
+        except DatabaseException:
+            logger.warning(
+                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
+                tenant_id,
             )
-            raise TenantServiceError(
-                "Tenant Service Error",
-                f"Failed to create tenant entry {tenant_id!r} in DB!",
-            ) from e
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Unexpected error occured when creating new entry for tenant %s.",
+                tenant_id,
+            )
+            raise TenantServiceException(
+                "Failed to create new tenant.",
+            ) from exc
 
     async def get(self, tenant_id: uuid.UUID) -> CurrentTenant:
         try:
             db_tenant = await self.repository.get(tenant_id)
-
             if db_tenant is None:
-                raise TenantNotFoundException(
-                    name="Tenant Service Error",
-                    message=f"Requested tenant with ID {tenant_id} not found!",
-                )
+                raise TenantNotFoundException(tenant_id)
+
             return CurrentTenant(
                 tenant_id=db_tenant.tenant_id,
                 organisation=db_tenant.organisation,
                 status=db_tenant.status,
             )
-        except Exception as e:
-            logger.exception(
-                f"Failed to retrieve tenant with ID {tenant_id!r} from database!",
+        except DatabaseException:
+            logger.warning(
+                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
+                tenant_id,
             )
-            raise TenantServiceError(
-                "Tenant Service Error",
-                f"Failed to retrieve tenant with ID {tenant_id!r} from database!",
-            ) from e
+            raise
+
+        except NotFoundException:
+            raise
+
+        except Exception as exc:
+            logger.warning(
+                "Unexpected error occured when searching for tenant %s.",
+                tenant_id,
+            )
+            raise TenantServiceException(
+                "Failed to find tenant.",
+            ) from exc
 
     async def update(self, tenant: Tenant, tenant_id: uuid.UUID) -> CurrentTenant:
         try:
             db_tenant = await self.repository.get(tenant_id)
-
-            if db_tenant is None:
-                raise TenantNotFoundException(
-                    name="Tenant Service Error",
-                    message=f"Requested tenant with ID {tenant_id} not found!",
-                )
 
             # Modulate tenant details
             db_tenant.organisation = tenant.organisation
@@ -93,35 +105,41 @@ class TenantService:
                 status=db_tenant.status,
             )
 
-        except Exception as e:
-            logger.exception(
-                f"Failed to update tenant with ID {tenant_id!r} in database!",
-            )
-            raise TenantServiceError(
-                "Tenant Service Error",
-                f"Failed to update tenant with ID {tenant_id!r} in database!",
-            ) from e
+        except DatabaseException:
+            raise
 
-    async def deactivate(self, tenant_id: uuid.UUID) -> TenantResponse:
+        except NotFoundException:
+            raise
+
+        except Exception as exc:
+            logger.warning(
+                "Unexpected error occured when updating tenant %s.",
+                tenant_id,
+            )
+            raise TenantServiceException(
+                "Failed to update tenant.",
+            ) from exc
+
+    async def delete(self, tenant_id: uuid.UUID) -> TenantResponse:
         try:
             db_tenant = await self.repository.get(tenant_id)
-
-            if db_tenant is None:
-                raise TenantNotFoundException(
-                    name="Tenant Service Error",
-                    message=f"Requested tenant with ID {tenant_id} not found!",
-                )
 
             deleted_tenant = await self.repository.delete(db_tenant)
             return TenantResponse(
                 tenant_id=deleted_tenant.tenant_id, status=deleted_tenant.status
             )
 
-        except Exception as e:
-            logger.exception(
-                f"Failed to delete tenant with ID {tenant_id!r} in database!"
+        except DatabaseException:
+            raise
+
+        except NotFoundException:
+            raise
+
+        except Exception as exc:
+            logger.warning(
+                "Unexpected error occured when deactivating tenant %s.",
+                tenant_id,
             )
-            raise TenantServiceError(
-                "Tenant Service Error",
-                f"Failed to delete tenant with ID {tenant_id!r} in database!",
-            ) from e
+            raise TenantServiceException(
+                "Failed to remove tenant.",
+            ) from exc
