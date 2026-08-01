@@ -27,16 +27,7 @@ async def register(
     organisation: str,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    try:
-        return await service.create(tenant=Tenant(organisation))
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-    except TenantServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
-        ) from exc
+    return await service.create(tenant=Tenant(organisation))
 
 
 @router.get(
@@ -46,20 +37,9 @@ async def read_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
 ) -> CurrentTenant:
-    try:
-        return await service.get(tenant_id=tenant_id)
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-    except TenantServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
-        ) from exc
+
+    return await service.get(tenant_id=tenant_id)
+
 
 @router.patch(
     "/tenants/{tenant_id}", status_code=status.HTTP_200_OK, response_model=CurrentTenant
@@ -69,22 +49,8 @@ async def update_tenant(
     tenant: UpdateRequest,
     service: TenantServiceDep,
 ) -> CurrentTenant:
-    try:
-        return await service.update(
-            tenant_id=tenant_id, tenant=Tenant(tenant.organisation)
-        )
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-    except TenantServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
-        ) from exc
+
+    return await service.update(tenant_id=tenant_id, tenant=Tenant(tenant.organisation))
 
 
 @router.delete(
@@ -96,17 +62,5 @@ async def revoke_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    try:
-        return await service.delete(tenant_id=tenant_id)
-    except DatabaseException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
-    except NotFoundException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=exc.message
-        ) from exc
-    except TenantServiceException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.message
-        ) from exc
+
+    return await service.delete(tenant_id=tenant_id)
