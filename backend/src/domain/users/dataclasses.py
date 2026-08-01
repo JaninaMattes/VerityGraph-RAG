@@ -10,3 +10,13 @@ class User:
     username: str
     email: str
     password_hash: str
+
+
+@dataclass(slots=True, frozen=True)
+class UpdateUser:
+    """
+    Domain representation of a new user object.
+    """
+
+    username: str
+    email: str
