@@ -52,3 +52,20 @@ class DocumentStatus(StrEnum):
     READY = "ready"
     FAILED = "failed"
     DELETED = "deleted"
+
+
+class IngestionStage(StrEnum):
+    DOWNLOAD = "download"
+    PARSING = "parsing"
+    CHUNKING = "chunking"
+    EMBEDDING = "embedding"
+    GRAPH_BUILDING = "graph_building"
+    EVALUATION = "evaluation"
+
+
+class ProcessingStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "complete"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
