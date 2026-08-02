@@ -1,4 +1,3 @@
-# SQLAlchemy implementation
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError

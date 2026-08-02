@@ -20,7 +20,7 @@ class CredentialsEntity:
         credentials_id: UUID,
         user_id: UUID,
         provider: str | None = None,
-        password_hash: str,
+        password_hash: str | None = None,
         status: CredentialStatus,
         created_at: datetime,
         updated_at: datetime,

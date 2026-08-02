@@ -2,7 +2,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import UUID, DateTime, Enum, String
+from sqlalchemy import UUID, DateTime, Enum, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
@@ -21,8 +21,14 @@ class Tenant(Base):
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
     # Relationships
-    documents: Mapped[list[Document] | None] = relationship(back_populates="tenant")
-    users: Mapped[list[User] | None] = relationship(back_populates="tenant")
+    documents: Mapped[list[Document] | None] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+    users: Mapped[list["User"] | None] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
 
     # Company details
     organisation: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -43,16 +49,26 @@ class Tenant(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
-    # __table_args__ = (
-    #     Index(
-    #         "idx_tenants_organisation",
-    #         "organisation",
-    #     ),
-    #     Index(
-    #         "idx_tenants_created",
-    #         "created_at",
-    #     ),
-    # )
+    __table_args__ = (
+        Index(
+            "ix_tenant_organisation",
+            "organisation",
+        ),
+        Index(
+            "ix_tenant_status",
+            "status",
+        ),
+        Index(
+            "ix_tenant_created_at",
+            "created_at",
+        ),
+    )
 
     def __repr__(self) -> str:
-        return f"Tenant(tenant_id={self.tenant_id!r})"
+        return (
+            f"Tenant("
+            f"tenant_id={self.tenant_id!r}, "
+            f"organisation={self.organisation!r}, "
+            f"status={self.status!r}"
+            ")"
+        )
