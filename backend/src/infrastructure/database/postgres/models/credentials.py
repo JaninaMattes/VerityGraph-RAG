@@ -2,14 +2,23 @@ import typing
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import UUID, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import (
+    UUID,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
 from src.shared.enums import CredentialStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User
+    from .user import User  # noqa: TC004
 
 
 class UserCredentials(Base):
@@ -33,7 +42,7 @@ class UserCredentials(Base):
     provider: Mapped[str | None] = mapped_column(
         String(255)
     )  # e.g. Local, or Google credentials
-    password_hash: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str | None] = mapped_column(Text)
     status: Mapped[CredentialStatus] = mapped_column(
         Enum(CredentialStatus, name="credentialstatus", native_enum=True),
         default=CredentialStatus.CREATED,
@@ -55,16 +64,27 @@ class UserCredentials(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
-    # __table_args__ = (
-    #     Index(
-    #         "idx_credentials_user",
-    #         "user_id",
-    #     ),
-    #     Index(
-    #         "idx_credentials_created",
-    #         "created_at",
-    #     ),
-    # )
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_provider"),
+        Index(
+            "ix_credentials_provider",
+            "provider",
+        ),
+        Index(
+            "ix_credentials_status",
+            "status",
+        ),
+        Index(
+            "ix_credentials_created_at",
+            "created_at",
+        ),
+    )
 
     def __repr__(self) -> str:
-        return f"Credentials(credentials_id={self.credentials_id!r})"
+        return (
+            f"UserCredentials("
+            f"credentials_id={self.credentials_id!r}, "
+            f"provider={self.provider!r}, "
+            f"status={self.status!r}"
+            ")"
+        )

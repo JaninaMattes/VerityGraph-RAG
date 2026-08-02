@@ -2,7 +2,7 @@ import typing
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
@@ -14,6 +14,8 @@ from src.shared.enums import (
 )
 
 if typing.TYPE_CHECKING:
+    from .chunk import DocumentChunk
+    from .ingestion import IngestionJob
     from .tenant import Tenant
 
 
@@ -32,7 +34,15 @@ class Document(Base):
     )
 
     # Relationship
-    tenant: Mapped[Tenant] = relationship(back_populates="documents")
+    tenant: Mapped["Tenant"] = relationship(back_populates="documents")
+    ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    document_chunks: Mapped[list["DocumentChunk"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
 
     # File details
     filename: Mapped[str] = mapped_column(String(255))
@@ -72,17 +82,24 @@ class Document(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
-    # __table_args__ = (
-    #     Index(
-    #         "idx_documents_tenant_status",
-    #         "tenant_id",
-    #         "status",
-    #     ),
-    #     Index(
-    #         "idx_documents_created",
-    #         "created_at",
-    #     ),
-    # )
+    __table_args__ = (
+        Index(
+            "ix_document_created_at",
+            "created_at",
+        ),
+        Index(
+            "ix_document_status",
+            "status",
+        ),
+    )
 
     def __repr__(self) -> str:
-        return f"DocumentEntity(document_id={self.document_id!r}, filename={self.filename!s}"
+        return (
+            f"Document("
+            f"document_id={self.document_id!r}, "
+            f"filename={self.filename!r}, "
+            f"mime_type={self.mime_type!r}, "
+            f"size_bytes={self.size_bytes!r}, "
+            f"status={self.status!r}"
+            ")"
+        )
