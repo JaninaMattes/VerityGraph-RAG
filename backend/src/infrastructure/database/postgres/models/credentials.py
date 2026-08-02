@@ -36,7 +36,7 @@ class UserCredentials(Base):
     )
 
     # Relationship
-    user: Mapped[User] = relationship(back_populates="credentials")
+    user: Mapped["User"] = relationship(back_populates="credentials")
 
     # Auth
     provider: Mapped[str | None] = mapped_column(

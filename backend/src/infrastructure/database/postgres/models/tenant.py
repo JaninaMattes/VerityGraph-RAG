@@ -25,7 +25,7 @@ class Tenant(Base):
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
-    users: Mapped[list[User] | None] = relationship(
+    users: Mapped[list["User"] | None] = relationship(
         back_populates="tenant",
         cascade="all, delete-orphan",
     )

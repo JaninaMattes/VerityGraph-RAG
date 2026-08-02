@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database.postgres.base import Base
 
 if typing.TYPE_CHECKING:
-    from .document import Document  # noqa: TC004
+    from .document import Document
 
 
 class DocumentChunk(Base):
@@ -37,7 +37,7 @@ class DocumentChunk(Base):
     )
 
     # Relationship
-    document: Mapped[Document] = relationship(back_populates="document_chunks")
+    document: Mapped["Document"] = relationship(back_populates="document_chunks")
 
     # Properties
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)  # ordering

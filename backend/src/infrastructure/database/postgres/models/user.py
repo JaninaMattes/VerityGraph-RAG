@@ -37,7 +37,7 @@ class User(Base):
     )
 
     # Relationship
-    tenant: Mapped[Tenant] = relationship(back_populates="users")
+    tenant: Mapped["Tenant"] = relationship(back_populates="users")
     credentials: Mapped[list[UserCredentials]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
