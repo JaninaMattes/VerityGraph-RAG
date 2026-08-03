@@ -3,23 +3,23 @@ import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from src.core.logger import get_logger
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
-from src.domain.documents.schemas import (
-    DeleteResponse,
-    MetadataRequest,
-    MetadataResponse,
-    URLResponse,
-)
 from src.infrastructure.storage.provider import StorageProvider
-from src.shared.enums import DocumentStatus
-from src.utils.exceptions import (
+from src.shared.core.logger import get_logger
+from src.shared.enums.document import DocumentStatus
+from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
     NotFoundException,
     StorageException,
+)
+from src.shared.schemas.document import (
+    CreateDocumentRequest,
+    DeleteResponse,
+    DocumentResponse,
+    PresignedURLResponse,
 )
 from src.workflows.ingestion.workflow import WorkflowClient
 
@@ -41,9 +41,9 @@ class DocumentService:
 
     async def create_upload_url(
         self,
-        file: MetadataRequest,
+        file: CreateDocumentRequest,
         namespace: str = "documents",
-    ) -> URLResponse:
+    ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
@@ -75,17 +75,15 @@ class DocumentService:
                 expires_at=expires_at,
                 method="PUT",
             )
-            return URLResponse(
+            return PresignedURLResponse(
                 document_id=db_document.document_id,
                 url=presigned_url,
                 expires_at=expires_at,
             )
         except DatabaseException:
             raise
-
         except StorageException:
             raise
-
         except Exception as exc:
             logger.warning(
                 "Unexpected error occured when generating presigned PUT URL for document %s.",
@@ -95,13 +93,13 @@ class DocumentService:
                 "Failed to create presigned upload URL.",
             ) from exc
 
-    async def create_download_url(
+    async def get_download_url(
         self,
         document_id: uuid.UUID,
-    ) -> URLResponse:
+    ) -> PresignedURLResponse:
         """Create presigned GET URL to download file from S3 bucket."""
         try:
-            db_document = await self.repository.get(document_id=document_id)
+            db_document = await self.repository.get_one(document_id=document_id)
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
@@ -109,17 +107,15 @@ class DocumentService:
                 expires_at=expires_at,
                 method="GET",
             )
-            return URLResponse(
+            return PresignedURLResponse(
                 document_id=document_id,
                 url=presigned_url,
                 expires_at=expires_at,
             )
         except DatabaseException:
             raise
-
         except StorageException:
             raise
-
         except Exception as exc:
             logger.warning(
                 "Unexpected error occured when generating presigned GET URL for document %s.",
@@ -129,13 +125,14 @@ class DocumentService:
                 "Failed to create presigned upload URL.",
             ) from exc
 
-    async def update_metadata(
+    async def finalize_upload(
         self,
         document_id: uuid.UUID,
-    ) -> MetadataResponse:
+    ) -> DocumentResponse:
         try:
             # Fetch document metadata
-            db_document = await self.repository.get(document_id=document_id)
+            db_document = await self.repository.get_one(document_id)
+
             # Retrieve blob storage metadata
             metadata = await asyncio.to_thread(
                 self.storage.get_obj_metadata,
@@ -143,26 +140,19 @@ class DocumentService:
             )
 
             # Modulate document metadata
-            db_document.storage_key = metadata.storage_key
-            db_document.mime_type = metadata.mime_type
-            db_document.size_bytes = metadata.size_bytes
-            db_document.bucket_name = metadata.bucket_name
-            db_document.version_id = metadata.version_id
-            db_document.etag = metadata.etag
+            db_document.update_storage_metadata(metadata)
             # If object, then we can mark it as uploaded
             db_document.mark_uploaded()
 
-            # Update document metdata
+            # Persist document metdata
             updated = await self.repository.update(db_document)
-            return MetadataResponse(
+            return DocumentResponse(
                 document_id=updated.document_id, status=updated.status
             )
         except DatabaseException:
             raise
-
         except NotFoundException:
             raise
-
         except Exception as exc:
             logger.warning(
                 "Unexpected error occured when updating metadata for document %s.",
@@ -172,26 +162,24 @@ class DocumentService:
                 "Failed to update document metadata.",
             ) from exc
 
-    async def delete(
-        self, document_id: uuid.UUID, user_id: uuid.UUID
-    ) -> DeleteResponse:
+    async def delete_document_metadata(self, document_id: uuid.UUID) -> None:
         try:
             # Retrieve actual document
-            document = await self.repository.get(document_id)
-            document.mark_deleted(user_id)
+            db_document = await self.repository.get_one(document_id)
 
-            # Update metadata
-            db_document = await self.repository.update(document)
+            # Delete from database
+            await self.repository.delete(db_document)
 
-            return DeleteResponse(
-                document_id=db_document.document_id, status=db_document.status
+            # Delete from blob storage
+            await asyncio.to_thread(
+                self.storage.delete_object,
+                storage_key=db_document.storage_key,
             )
+
         except DatabaseException:
             raise
-
         except NotFoundException:
             raise
-
         except Exception as exc:
             logger.warning(
                 "Unexpected error occured when removing document %s metadata.",

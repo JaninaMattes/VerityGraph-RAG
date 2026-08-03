@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.domain.documents.dataclasses import DocumentChecksum, StorageKey
-from src.shared.enums import DocumentStatus, DocumentType, LanguageType, StorageProvider
+from src.domain.documents.dataclasses import DocumentChecksum, StorageKey, StoredFile
+from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
+from src.shared.enums.storage import StorageProvider
 
 
 class DocumentEntity:
@@ -73,28 +74,28 @@ class DocumentEntity:
         self.status = DocumentStatus.READY
         self.language = language
         self.updated_at = datetime.now(UTC)
-        self.updated_at = datetime.now(UTC)
 
     def mark_uploaded(self) -> None:
         self.status = DocumentStatus.UPLOADED
-        self.updated_at = datetime.now(UTC)
-        self.updated_at = datetime.now(UTC)
-
-    def mark_processing(self) -> None:
-        self.status = DocumentStatus.PROCESSING
-        self.updated_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
     def mark_failed(self) -> None:
         self.status = DocumentStatus.FAILED
         self.updated_at = datetime.now(UTC)
-        self.updated_at = datetime.now(UTC)
 
     def mark_deleted(self, user_id: UUID) -> None:
         self.status = DocumentStatus.DELETED
         self.deleted_at = datetime.now(UTC)
-        self.deleted_at = datetime.now(UTC)
         self.deleted_by = user_id
+
+    def update_storage_metadata(self, metadata: StoredFile):
+        # Modulates document metadata
+        self.storage_key = metadata.storage_key
+        self.mime_type = metadata.mime_type
+        self.size_bytes = metadata.size_bytes
+        self.bucket_name = metadata.bucket_name
+        self.version_id = metadata.version_id
+        self.etag = metadata.etag
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DocumentEntity):
