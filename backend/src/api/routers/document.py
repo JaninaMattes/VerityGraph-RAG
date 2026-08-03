@@ -2,79 +2,68 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from src.core.logger import get_logger
 from src.dependencies import (
-    get_current_user,
     get_document_service,
 )
-from src.domain.auth.dataclasses import Principal
-from src.domain.documents.schemas import (
-    DeleteResponse,
-    MetadataRequest,
-    MetadataResponse,
-    URLResponse,
-)
 from src.domain.documents.service import DocumentService
+from src.shared.core.logger import get_logger
+from src.shared.schemas.document import (
+    CreateDocumentRequest,
+    DocumentResponse,
+    PresignedURLResponse,
+)
 
 logger = get_logger("api.routers.document")
 
 router = APIRouter()
 
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
-CurrentUserDep = Annotated[Principal, Depends(get_current_user)]
 
 
 @router.post(
-    "/documents/upload", status_code=status.HTTP_200_OK, response_model=URLResponse
+    "/documents",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PresignedURLResponse,
 )
 async def create_upload_url(
-    file: MetadataRequest,
+    request: CreateDocumentRequest,
     service: DocServiceDep,
-    current_user: CurrentUserDep,
     namespace: str = "documents",
-) -> URLResponse:
-
-    return await service.create_upload_url(file=file, namespace=namespace)
+) -> PresignedURLResponse:
+    return await service.create_upload_url(request, namespace=namespace)
 
 
 @router.get(
-    "/documents/{document_id}/download",
+    "/documents/{document_id}",
     status_code=status.HTTP_200_OK,
-    response_model=URLResponse,
+    response_model=PresignedURLResponse,
 )
-async def create_download_url(
+async def get_download_url(
     document_id: uuid.UUID,
     service: DocServiceDep,
-    current_user: CurrentUserDep,
-) -> URLResponse:
+) -> PresignedURLResponse:
 
-    return await service.create_download_url(document_id)
+    return await service.get_download_url(document_id)
 
 @router.patch(
-    "/documents/{document_id}/complete",
+    "/documents/{document_id}/finalize",
     status_code=status.HTTP_200_OK,
-    response_model=MetadataResponse,
+    response_model=DocumentResponse,
 )
-async def complete(
+async def finalize(
     document_id: uuid.UUID,
     service: DocServiceDep,
-    current_user: CurrentUserDep,
-) -> MetadataResponse:
-
-    return await service.update_metadata(document_id)
+) -> DocumentResponse:
+    """Update metdata in database, if document has been uploaded to blob storage."""
+    return await service.finalize_upload(document_id)
 
 
 @router.delete(
-    "/documents/{document_id}/delete",
-    status_code=status.HTTP_200_OK,
-    response_model=DeleteResponse,
+    "/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
-async def remove_document(
+async def delete_document(
     document_id: uuid.UUID,
     service: DocServiceDep,
-    current_user: CurrentUserDep,
-) -> DeleteResponse:
-
-    # TODO: Retrieve current user
-    user_id = current_user.user_id
-    return await service.delete(document_id, user_id)
+) -> None:
+    await service.delete_document_metadata(document_id)

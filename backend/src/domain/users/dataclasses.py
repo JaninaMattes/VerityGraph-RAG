@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 
 @dataclass(slots=True, frozen=True)
@@ -15,8 +16,9 @@ class User:
 @dataclass(slots=True, frozen=True)
 class UpdateUser:
     """
-    Domain representation of a new user object.
+    Domain representation of an updated user object.
     """
 
+    user_id: UUID
     username: str
     email: str

@@ -1,5 +1,5 @@
 from src.domain.credentials.repository import CredentialsRepository
-from src.shared.enums import StorageProvider
+from src.infrastructure.storage.provider import StorageProvider
 
 
 class CredentialService:

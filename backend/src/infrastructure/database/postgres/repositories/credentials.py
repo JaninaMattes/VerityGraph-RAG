@@ -1,17 +1,19 @@
 from uuid import UUID
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from src.core.logger import get_logger
 from src.domain.credentials.entities import CredentialsEntity
 from src.domain.credentials.repository import CredentialsRepository
 from src.infrastructure.database.postgres.mapper.credentials import CredentialsMapper
 from src.infrastructure.database.postgres.models.credentials import (
     UserCredentials,
 )
-from src.utils.exceptions import (
+from src.shared.core.logger import get_logger
+from src.shared.exception.exceptions import (
     CredentialsNotFoundException,
+    DatabaseInternalException,
     DatabaseOperationException,
 )
 
@@ -31,91 +33,114 @@ class PostgresCredentialsRepository(CredentialsRepository):
     ) -> CredentialsEntity:
         db_credentials = CredentialsMapper.to_model(credentials)
 
-        # Add new object to session
         try:
+            # Add new object to session
             self.session.add(db_credentials)
             await self.session.commit()
             await self.session.refresh(db_credentials)
+        except IntegrityError as exc:
+            logger.warning(
+                "Database error as new credentials %s for user %s exists already: %s",
+                db_credentials.credentials_id,
+                db_credentials.user_id,
+                exc,
+            )
+            raise DatabaseOperationException(
+                f"Credentials '{db_credentials.credentials_id}' already exists in database."
+            ) from exc
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s for user %s. This could be due to an invalid or conflicting function argument.",
+                "Database error creating new credentials %s for user %s: %s",
                 credentials.credentials_id,
                 credentials.user_id,
+                exc,
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to store new credentials for '{credentials.credentials_id}' in database."
             ) from exc
 
         return CredentialsMapper.to_entity(db_credentials)  # after refresh
 
-    async def get(self, credentials_id: UUID) -> CredentialsEntity:
+    async def get_one(self, credentials_id: UUID, user_id: UUID) -> CredentialsEntity:
         """Retrieve a record by its primary key."""
         try:
-            db_credentials = await self.session.get(UserCredentials, credentials_id)
+            stmt = select(UserCredentials).where(
+                UserCredentials.credentials_id == credentials_id
+            )
+            result = await self.session.execute(stmt)
+            db_credentials: UserCredentials | None = result.scalar_one_or_none()
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
+                "Database error fetching credentials %s for user %s: %s",
                 credentials_id,
+                user_id,
+                exc,
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to read credentials for '{credentials_id}' in database."
             ) from exc
 
-        if db_credentials is None:
-            raise CredentialsNotFoundException(credentials_id=credentials_id)
-
+        # Enforce ownership boundaries
+        if db_credentials is None or db_credentials.user_id != user_id:
+            raise CredentialsNotFoundException(
+                credentials_id=credentials_id
+            )  # mask existence
         return CredentialsMapper.to_entity(db_credentials)
 
     async def update(
         self,
         credentials: CredentialsEntity,
     ) -> CredentialsEntity:
-        db_credentials = CredentialsMapper.to_model(credentials)
 
-        # Add new object to session
         try:
+            current_db_credentials = await self.session.get(
+                UserCredentials, credentials.credentials_id
+            )
+            if (
+                current_db_credentials is None
+                or current_db_credentials.user_id != credentials.user_id
+            ):
+                raise CredentialsNotFoundException(
+                    credentials_id=credentials.credentials_id
+                )  # mask existence
+
+            # Merge objects
+            db_credentials = CredentialsMapper.to_model(credentials)
             merged_credentials = await self.session.merge(db_credentials)
             await self.session.commit()
-            await self.session.refresh(merged_credentials)
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s for user %s. This could be due to an invalid or conflicting function argument.",
+                "Database error updating credentials %s for %s: %s",
                 credentials.credentials_id,
                 credentials.user_id,
+                exc,
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to update credentials for '{credentials.credentials_id}' in database."
             ) from exc
-
         return CredentialsMapper.to_entity(merged_credentials)  # after refresh
 
     async def delete(
         self,
         credentials: CredentialsEntity,
-    ) -> CredentialsEntity:
+    ) -> None:
         db_credentials = CredentialsMapper.to_model(credentials)
 
-        # Add new object to session
         try:
             merged_credentials = await self.session.merge(db_credentials)
             await self.session.delete(merged_credentials)
             await self.session.commit()
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s for user %s. This could be due to an invalid or conflicting function argument.",
+                "Database error removing credentials %s for %s: %s",
                 credentials.credentials_id,
                 credentials.user_id,
+                exc,
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to remove credentials for '{credentials.credentials_id}' in database."
             ) from exc
-
-        return CredentialsMapper.to_entity(merged_credentials)  # after refresh

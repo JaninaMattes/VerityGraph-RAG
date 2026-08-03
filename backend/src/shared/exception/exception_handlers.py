@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from src.core.logger import get_logger
-from src.utils.exceptions import (
+from src.shared.core.logger import get_logger
+from src.shared.exception.exceptions import (
     AccessDeniedException,
     DatabaseException,
+    DatabaseInternalException,
+    DatabaseOperationException,
     NotFoundException,
     ServiceException,
     StorageException,
@@ -14,9 +16,9 @@ from src.utils.exceptions import (
 logger = get_logger("api.exceptions")
 
 
-async def database_exception_handler(
+async def database_op_exception_handler(
     request: Request,
-    exc: DatabaseException,
+    exc: DatabaseOperationException,
 ) -> JSONResponse:
     logger.exception(
         "Database error during %s %s",
@@ -25,7 +27,28 @@ async def database_exception_handler(
     )
     return JSONResponse(
         status_code=400,
-        content={"error": "database_error", "message": "A database error occured."},
+        content={
+            "error": "database_error",
+            "message": "The requested entry exists already.",
+        },
+    )
+
+
+async def database_int_exception_handler(
+    request: Request,
+    exc: DatabaseInternalException,
+) -> JSONResponse:
+    logger.exception(
+        "Database error during %s %s",
+        request.method,
+        request.url,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "database_error",
+            "message": "Database operation failed.",
+        },
     )
 
 
@@ -119,8 +142,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     Register all application exception handlers.
     """
     app.add_exception_handler(
-        DatabaseException,
-        database_exception_handler,  # type: ignore
+        DatabaseOperationException,
+        database_op_exception_handler,  # type: ignore
+    )
+
+    app.add_exception_handler(
+        DatabaseInternalException,
+        database_int_exception_handler,  # type: ignore
     )
 
     app.add_exception_handler(

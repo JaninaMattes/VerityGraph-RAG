@@ -7,8 +7,6 @@ from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import Settings, get_settings
-from src.core.logger import get_logger
 from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
@@ -27,7 +25,9 @@ from src.infrastructure.database.postgres.repositories.user import (
 )
 from src.infrastructure.database.postgres.session import get_db_session
 from src.infrastructure.storage.minio.storage import MinioStorage
-from src.utils.exceptions import StorageException
+from src.shared.core.config import Settings, get_settings
+from src.shared.core.logger import get_logger
+from src.shared.exception.exceptions import StorageException
 from src.workflows.client import WorkflowClient
 
 logger = get_logger("api.dependencies")

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import UserRole, UserStatus
+from src.shared.enums.user import UserRole, UserStatus
 
 
 class UserEntity:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import CredentialStatus
+from src.shared.enums.credentials import CredentialStatus
 
 
 class CredentialsEntity:

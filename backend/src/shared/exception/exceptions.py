@@ -23,6 +23,33 @@ class ApplicationException(Exception):
 
 
 # ============================================================
+# Authorisation Missing Exceptions
+# ============================================================
+class NoAuthorisationException(ApplicationException):
+    """
+    Generic missing resource exception that manages all shared behaviour.
+    """
+
+    def __init__(self, message: str):
+        super().__init__("Unauthorised access!")
+        self.message = message
+
+
+class ResourceAccessDeniedException(NoAuthorisationException):
+    """
+    Generic missing resource exception that manages all shared behaviour.
+    """
+
+    def __init__(self, object_id: UUID, resource_name: str):
+        super().__init__(
+            f"Resource access denied for '{resource_name}' with '{object_id}'."
+        )
+
+        self.object_id = object_id
+        self.resource_name = resource_name
+
+
+# ============================================================
 # Resource Not Found Exceptions
 # ============================================================
 
@@ -52,6 +79,22 @@ class DocumentNotFoundException(NotFoundException):
         super().__init__(f"Document with ID '{document_id}' was not found.")
 
         self.document_id = document_id
+
+class DocumentChunkNotFoundException(NotFoundException):
+    def __init__(self, chunk_id: UUID, chunk_idx: int, document_id: UUID):
+        super().__init__(
+            f"Chunk with ID '{chunk_id}' and Index '{chunk_idx}' of document with ID '{document_id} 'was not found."
+        )
+
+        self.chunk_id = chunk_id
+        self.chunk_idx = chunk_idx
+
+
+class IngestionJobNotFoundException(NotFoundException):
+    def __init__(self, job_id: UUID):
+        super().__init__(f"Job with ID '{job_id}' was not found.")
+
+        self.chunk_id = job_id
 
 
 class UserNotFoundException(NotFoundException):
@@ -108,45 +151,35 @@ class DocumentNotCreatedException(ApplicationException):
 class DatabaseException(ApplicationException):
     """
     Base database failure.
-
-    Replaces:
-        DatabaseError
     """
 
+
+class DatabaseInternalException(DatabaseException):
+    """
+    General database operation failure.
+    """
 
 class DatabaseOperationException(DatabaseException):
     """
     General database operation failure.
-
-    Replaces:
-        DatabaseOperationError
     """
 
 
 class DatabaseConnectionException(DatabaseException):
     """
     Database unavailable or connection failed.
-
-    Replaces:
-        DatabaseConnectionError
     """
 
 
 class DatabaseTimeoutException(DatabaseException):
     """
     Database operation exceeded timeout.
-
-    Replaces:
-        DatabaseTimeoutError
     """
 
 
 class EntityAlreadyExistsException(DatabaseException):
     """
     Duplicate entity creation.
-
-    Replaces:
-        EntityAlreadyExistsError
     """
 
 
@@ -164,9 +197,6 @@ class StorageException(ApplicationException):
 class StorageOperationException(StorageException):
     """
     Storage provider operation failed.
-
-    Replaces:
-        StorageOperationError
     """
 
     def __init__(self, bucket_name: str, description: str):
@@ -203,33 +233,28 @@ class ServiceException(ApplicationException):
 class AuthServiceException(ServiceException):
     """
     Document service failure.
-
-    Replaces:
-        DocumentServiceError
     """
+
 
 class DocumentServiceException(ServiceException):
     """
     Document service failure.
+    """
 
-    Replaces:
-        DocumentServiceError
+
+class JobServiceException(ServiceException):
+    """
+    Document service failure.
     """
 
 
 class UserServiceException(ServiceException):
     """
     User service failure.
-
-    Replaces:
-        UserServiceError
     """
 
 
 class TenantServiceException(ServiceException):
     """
     Tenant service failure.
-
-    Replaces:
-        TenantServiceError
     """

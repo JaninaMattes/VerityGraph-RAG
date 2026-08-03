@@ -1,4 +1,4 @@
-from src.shared.enums import DocumentType
+from src.shared.enums.document import DocumentType
 
 SUPPORTED_DOCUMENTS = {
     "application/pdf": DocumentType.PDF,

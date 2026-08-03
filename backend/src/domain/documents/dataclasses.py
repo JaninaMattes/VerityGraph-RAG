@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID
 
-from src.shared.enums import DocumentStatus, DocumentType, LanguageType, StorageProvider
+from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
+from src.shared.enums.storage import StorageProvider
 
 
 @dataclass(slots=True, frozen=True)
@@ -22,7 +23,7 @@ class StorageKey:
         document_id: UUID,
         namespace: str = "documents",
         extension: str | None = None,
-    ) -> StorageKey:
+    ) -> "StorageKey":
         now = datetime.now(UTC)
 
         key = f"{tenant_id}/{namespace}/{now.year}/{now.month:02d}/{document_id}"

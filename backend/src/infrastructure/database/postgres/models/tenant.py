@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models.document import Document
 from src.infrastructure.database.postgres.models.user import User
-from src.shared.enums import TenantStatus
+from src.shared.enums.tenant import TenantStatus
 
 
 class Tenant(Base):

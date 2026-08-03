@@ -1,14 +1,19 @@
 from uuid import UUID
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from src.core.logger import get_logger
+from src.shared.core.logger import get_logger
 from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
 from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
 from src.infrastructure.database.postgres.models.tenant import Tenant
-from src.utils.exceptions import DatabaseOperationException, TenantNotFoundException
+from src.shared.exception.exceptions import (
+    DatabaseInternalException,
+    DatabaseOperationException,
+    TenantNotFoundException,
+)
 
 logger = get_logger("api.infra.postgres.tenant")
 
@@ -25,36 +30,39 @@ class PostgresTenantRepository(TenantRepository):
         tenant: TenantEntity,
     ) -> TenantEntity:
         db_tenant = TenantMapper.to_model(tenant)
-
-        # Add new object to session
         try:
+            # Add new object to session
             self.session.add(db_tenant)
             await self.session.commit()
             await self.session.refresh(db_tenant)
+        except IntegrityError as exc:
+            logger.warning(
+                "Database error as new tenant %s exists already: %s",
+                tenant.tenant_id,
+                exc,
+            )
+            raise DatabaseOperationException(
+                f"Tenant '{tenant.tenant_id}' already exists in database."
+            ) from exc
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
-                db_tenant.tenant_id,
+                "Database error creating new tenant %s: %s", db_tenant.tenant_id, exc
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to create new tenant entry for '{db_tenant.tenant_id}' in the database."
             ) from exc
-
         return TenantMapper.to_entity(db_tenant)  # after rerfesh
 
-    async def get(self, tenant_id: UUID) -> TenantEntity:
+    async def get_one(self, tenant_id: UUID) -> TenantEntity:
         try:
-            db_tenant = await self.session.get(Tenant, tenant_id)
+            stmt = select(Tenant).where(Tenant.tenant_id == tenant_id)
+            result = await self.session.execute(stmt)
+            db_tenant: Tenant | None = result.scalar_one_or_none()
         except SQLAlchemyError as exc:
-            logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
-                tenant_id,
-            )
+            logger.warning("Database error fetching tenant %s: %s", tenant_id, exc)
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to read tenant information for '{tenant_id}' in the database."
             ) from exc
 
@@ -73,20 +81,17 @@ class PostgresTenantRepository(TenantRepository):
     ) -> TenantEntity:
 
         db_tenant = TenantMapper.to_model(tenant)
-
-        # Merge objects
         try:
+            # Merge objects
             merged_tenant = await self.session.merge(db_tenant)
             await self.session.commit()
             await self.session.refresh(merged_tenant)
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
-                tenant.tenant_id,
+                "Database error updating tenant %s: %s", db_tenant.tenant_id, exc
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to update tenant information for '{tenant.tenant_id}' in the database."
             ) from exc
 
@@ -95,7 +100,7 @@ class PostgresTenantRepository(TenantRepository):
     async def delete(
         self,
         tenant: TenantEntity,
-    ) -> TenantEntity:
+    ) -> None:
 
         db_tenant = TenantMapper.to_model(tenant)
 
@@ -105,13 +110,9 @@ class PostgresTenantRepository(TenantRepository):
             await self.session.commit()
         except SQLAlchemyError as exc:
             logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
-                tenant.tenant_id,
+                "Database error removing tenant %s: %s", db_tenant.tenant_id, exc
             )
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to remove tenant information for '{tenant.tenant_id}' in the database."
             ) from exc
-
-        return TenantMapper.to_entity(merged_tenant)

@@ -15,10 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums import CredentialStatus
+from src.shared.enums.credentials import CredentialStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User  # noqa: TC004
+    from .user import User
 
 
 class UserCredentials(Base):
@@ -38,7 +38,7 @@ class UserCredentials(Base):
     # Relationship
     user: Mapped["User"] = relationship(back_populates="credentials")
 
-    # Auth
+    # Credentials properties
     provider: Mapped[str | None] = mapped_column(
         String(255)
     )  # e.g. Local, or Google credentials

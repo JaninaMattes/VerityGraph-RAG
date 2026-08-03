@@ -6,12 +6,8 @@ from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums import (
-    DocumentStatus,
-    DocumentType,
-    LanguageType,
-    StorageProvider,
-)
+from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
+from src.shared.enums.storage import StorageProvider
 
 if typing.TYPE_CHECKING:
     from .chunk import DocumentChunk
@@ -36,22 +32,21 @@ class Document(Base):
     # Relationship
     tenant: Mapped["Tenant"] = relationship(back_populates="documents")
     ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
-        back_populates="document",
-        cascade="all, delete-orphan",
+        back_populates="document", cascade="all, delete-orphan"
     )
     document_chunks: Mapped[list["DocumentChunk"]] = relationship(
-        back_populates="document",
-        cascade="all, delete-orphan",
+        back_populates="document", cascade="all, delete-orphan"
     )
 
-    # File details
+    # Document properties
     filename: Mapped[str] = mapped_column(String(255))
     mime_type: Mapped[str | None] = mapped_column(String(255))
     document_type: Mapped[DocumentType | None] = mapped_column(
         Enum(DocumentType, name="documenttype", native_enum=True)
     )
     language: Mapped[LanguageType | None] = mapped_column(
-        Enum(LanguageType, name="languagetype", native_enum=True)
+        Enum(LanguageType, name="languagetype", native_enum=True),
+        default=LanguageType.ENGLISH,  # For now just english
     )
     bucket_name: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(Text)

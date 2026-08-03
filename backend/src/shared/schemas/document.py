@@ -3,21 +3,22 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from src.shared.enums import DocumentStatus
+from src.shared.enums.document import DocumentStatus
 
 """The schema module provides the building blocks for ..."""
 
-class MetadataRequest(BaseModel):
+
+class CreateDocumentRequest(BaseModel):
     filename: str
     tenant_id: UUID
 
 
-class MetadataResponse(BaseModel):
+class DocumentResponse(BaseModel):
     document_id: UUID
     status: DocumentStatus
 
 
-class URLResponse(BaseModel):
+class PresignedURLResponse(BaseModel):
     document_id: UUID
     url: str
     expires_at: timedelta

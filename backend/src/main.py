@@ -2,10 +2,10 @@ from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 
 from src.api.routers import document, health, hello_world, tenant, user
-from src.core.config import get_settings
-from src.core.logger import get_logger, setup_logging
 from src.infrastructure.database.postgres.engine import async_engine
-from src.utils.exception_handlers import register_exception_handlers
+from src.shared.core.config import get_settings
+from src.shared.core.logger import get_logger, setup_logging
+from src.shared.exception.exception_handlers import register_exception_handlers
 
 # Initialization before FastAPI constructed
 setup_logging(log_level="INFO")
@@ -13,11 +13,15 @@ logger = get_logger("api.main")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Startup
-    yield
-    # Shutdown
-    await async_engine.dispose()
-
+    try:
+        # Startup
+        yield
+    except Exception:
+        logger.exception("App engine generation failure!")
+        raise
+    finally:
+        # Shutdown
+        await async_engine.dispose()
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
 
     database_url: str
+    database_echo: bool = True
 
     # ---------------------------------------------------------
     # Blob Storage (e.g. MinIO S3)
@@ -52,7 +53,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
-
 
 
 @lru_cache
