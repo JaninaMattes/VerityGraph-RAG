@@ -16,11 +16,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models.credentials import UserCredentials
-from src.shared.enums import UserRole, UserStatus
+from src.shared.enums.user import UserRole, UserStatus
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant  # noqa: TC004
-
+    from .tenant import Tenant
 
 class User(Base):
     __tablename__ = "users"
@@ -39,11 +38,11 @@ class User(Base):
     # Relationship
     tenant: Mapped["Tenant"] = relationship(back_populates="users")
     credentials: Mapped[list[UserCredentials]] = relationship(
-        back_populates="document",
+        back_populates="user",
         cascade="all, delete-orphan",
     )
 
-    # User details
+    # User properties
     username: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255), unique=True)
     roles: Mapped[list[UserRole]] = mapped_column(
@@ -69,12 +68,16 @@ class User(Base):
 
     __table_args__ = (
         Index(
-            "ix_user_created_at",
-            "created_at",
+            "ix_user_email",
+            "email",
         ),
         Index(
             "ix_user_status",
             "status",
+        ),
+        Index(
+            "ix_user_created_at",
+            "created_at",
         ),
     )
 

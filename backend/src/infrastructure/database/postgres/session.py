@@ -2,19 +2,25 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.core.logger import get_logger
+from src.shared.core.logger import get_logger
 from src.infrastructure.database.postgres.engine import async_engine
 
 logger = get_logger("api.infrastructure.postgres")
 
-# Create a session factory
+# Create an async session factory
 async_session_factory = async_sessionmaker(
-    bind=async_engine, class_=AsyncSession, expire_on_commit=False
+    bind=async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,  # Important for async
+    autocommit=False,
+    autoflush=False,
 )
 
-
 async def get_db_session() -> AsyncGenerator[AsyncSession]:
-    """Utilise generator as context manager."""
+    """
+    Utilise generator as context manager.
+    Yields a database session and ensures proper cleanup.
+    """
     async with async_session_factory() as session:
         try:
             yield session  # suspends execution and passes session to 'with' block

@@ -1,14 +1,19 @@
 from uuid import UUID
 
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-from src.core.logger import get_logger
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
 from src.infrastructure.database.postgres.mapper.user import UserMapper
 from src.infrastructure.database.postgres.models.user import User
-from src.utils.exceptions import DatabaseOperationException, UserNotFoundException
+from src.shared.core.logger import get_logger
+from src.shared.exception.exceptions import (
+    DatabaseInternalException,
+    DatabaseOperationException,
+    UserNotFoundException,
+)
 
 logger = get_logger("api.infra.postgres.user")
 
@@ -25,36 +30,38 @@ class PostgresUserRepository(UserRepository):
         user: UserEntity,
     ) -> UserEntity:
         db_user = UserMapper.to_model(user)
-
-        # Add new object to session
         try:
+            # Add new object to session
             self.session.add(db_user)
             await self.session.commit()
             await self.session.refresh(db_user)
-        except SQLAlchemyError as exc:
+        except IntegrityError as exc:
             logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
+                "Database error as new user %s exists already: %s",
                 user.user_id,
+                exc,
             )
-            await self.session.rollback()
-
             raise DatabaseOperationException(
+                f"User '{db_user.user_id}' already exists in database."
+            ) from exc
+        except SQLAlchemyError as exc:
+            logger.warning("Database error creating new user %s: %s", user.user_id, exc)
+            await self.session.rollback()
+            raise DatabaseInternalException(
                 f"Failed to create new user entry for '{db_user.user_id}' in database."
             ) from exc
 
         return UserMapper.to_entity(db_user)  # after rerfesh
 
-    async def get(self, user_id: UUID) -> UserEntity:
+    async def get_one(self, user_id: UUID) -> UserEntity:
         try:
-            db_user = await self.session.get(User, user_id)
+            stmt = select(User).where(User.user_id == user_id)
+            result = await self.session.execute(stmt)
+            db_user: User | None = result.scalar_one_or_none()
         except SQLAlchemyError as exc:
-            logger.warning(
-                "Raised database related error for %s. This could be due to an invalid or conflicting function argument.",
-                user_id,
-            )
+            logger.warning("Database error fetching user %s: %s", user_id, exc)
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Raised database related error for '{user_id}'."
             ) from exc
 
@@ -79,23 +86,18 @@ class PostgresUserRepository(UserRepository):
             await self.session.commit()
             await self.session.refresh(merged_user)
         except SQLAlchemyError as exc:
-            logger.exception(
-                "Failed to update user metadata with ID %s",
-                db_user.user_id,
-            )
+            logger.warning("Database error updating user %s: %s", user.user_id, exc)
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to update user metadata with ID '{db_user.user_id}'."
             ) from exc
 
         return UserMapper.to_entity(merged_user)  # after refresh
 
-
     async def delete(
         self,
         user: UserEntity,
-    ) -> UserEntity:
+    ) -> None:
 
         db_user = UserMapper.to_model(user)
 
@@ -104,14 +106,8 @@ class PostgresUserRepository(UserRepository):
             await self.session.delete(merged_user)
             await self.session.commit()
         except SQLAlchemyError as exc:
-            logger.exception(
-                "Failed to remove user metadata with ID %s",
-                db_user.user_id,
-            )
+            logger.warning("Database error removing user %s: %s", user.user_id, exc)
             await self.session.rollback()
-
-            raise DatabaseOperationException(
+            raise DatabaseInternalException(
                 f"Failed to remove user metadata with ID '{db_user.user_id}'."
             ) from exc
-
-        return UserMapper.to_entity(merged_user)

@@ -6,10 +6,10 @@ from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums import IngestionStage, ProcessingStatus
+from src.shared.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 if typing.TYPE_CHECKING:
-    from .document import Document  # noqa: TC004
+    from .document import Document
 
 
 class IngestionJob(Base):
@@ -67,8 +67,20 @@ class IngestionJob(Base):
 
     __table_args__ = (
         Index(
+            "ix_job_workflow_run_id",
+            "workflow_run_id",
+        ),
+        Index(
+            "ix_job_attempt_count",
+            "attempt_count",
+        ),
+        Index(
             "ix_job_stage",
             "current_stage",
+        ),
+        Index(
+            "ix_job_status",
+            "status",
         ),
         Index(
             "ix_job_status",
