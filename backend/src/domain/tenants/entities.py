@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums import TenantStatus
+from src.shared.enums.tenant import TenantStatus
 
 
 class TenantEntity:

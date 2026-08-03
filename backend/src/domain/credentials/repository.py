@@ -12,14 +12,16 @@ class CredentialsRepository(Protocol):
         credentials: CredentialsEntity,
     ) -> CredentialsEntity: ...
 
+    async def get_one(
+        self, credentials_id: UUID, user_id: UUID
+    ) -> CredentialsEntity: ...
+
     async def update(
         self,
         credentials: CredentialsEntity,
     ) -> CredentialsEntity: ...
 
-    async def get(self, credentials_id: UUID) -> CredentialsEntity: ...
-
     async def delete(
         self,
         credentials: CredentialsEntity,
-    ) -> CredentialsEntity: ...
+    ) -> None: ...
