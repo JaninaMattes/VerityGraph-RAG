@@ -3,13 +3,13 @@ from datetime import timedelta
 from minio import Minio, S3Error
 from minio.sse import SseCustomerKey
 
-from src.core.logger import get_logger
 from src.domain.documents.dataclasses import (
     StorageKey,
     StoredFile,
 )
 from src.infrastructure.storage.provider import StorageProvider
-from src.utils.exceptions import (
+from src.shared.core.logger import get_logger
+from src.shared.exception.exceptions import (
     AccessDeniedException,
     ObjectNotFoundException,
     StorageOperationException,
@@ -39,7 +39,7 @@ class MinioStorage(StorageProvider):
             else:
                 logger.info(f"A bucket with name {self.bucket_name} already exists.")
         except S3Error as exc:
-            if exc.code == "AccessDenied" or exc.code == "InvalidAccessKeyId":
+            if exc.code in ("AccessDenied", "InvalidAccessKeyId"):
                 logger.warning(
                     "Access to bucket %s denied due to missing permissions or bad credentials.",
                     self.bucket_name,
@@ -48,13 +48,12 @@ class MinioStorage(StorageProvider):
                     bucket_name=self.bucket_name,
                 ) from exc
             logger.warning(
-                "Raised error for bucket %s. "
-                "This could be due to an invalid or conflicting function argument.",
+                "Failed creating bucket %s.",
                 self.bucket_name,
             )
             raise StorageOperationException(
                 self.bucket_name,
-                description="Creating a new bucket failed.",
+                description=f"Creating bucket '{self.bucket_name}' failed.",
             ) from exc
 
     def create_presigned_url(
@@ -83,13 +82,14 @@ class MinioStorage(StorageProvider):
                     bucket_name=self.bucket_name,
                 ) from exc
             logger.warning(
-                "Raised error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                "Failed generating presigned %s URL for object %s from bucket %s.",
+                method,
                 storage_key,
                 self.bucket_name,
             )
             raise StorageOperationException(
                 self.bucket_name,
-                description=f"Generating presigned {method} URL failed.",
+                description=f"Generation of presigned '{method}' URL for object '{storage_key}' failed.",
             ) from exc
 
     def get_obj_metadata(
@@ -123,11 +123,48 @@ class MinioStorage(StorageProvider):
                     bucket_name=self.bucket_name,
                 ) from exc
             logger.warning(
-                "Raised error for key %s in bucket %s. This could be due to an invalid or conflicting function argument.",
+                "Failed to extract statistical data for object %s from bucket %s.",
                 storage_key,
                 self.bucket_name,
             )
             raise StorageOperationException(
                 self.bucket_name,
-                description=f" Gathering of statistical data for object '{storage_key}' failed.",
+                description=f"Gathering statistical data for '{storage_key}' failed.",
+            ) from exc
+
+    def delete_object(self, storage_key: StorageKey) -> None:
+        try:
+            self.client.remove_object(
+                bucket_name=self.bucket_name,
+                object_name=storage_key.value,
+            )
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                logger.warning(
+                    "Object %s does not exist in bucket %s.",
+                    storage_key,
+                    self.bucket_name,
+                )
+                raise ObjectNotFoundException(
+                    storage_key=storage_key.value,
+                    bucket_name=self.bucket_name,
+                ) from exc
+
+            if exc.code in ("AccessDenied", "InvalidAccessKeyId"):
+                logger.warning(
+                    "Access denied while deleting %s from bucket %s.",
+                    storage_key,
+                    self.bucket_name,
+                )
+                raise AccessDeniedException(
+                    bucket_name=self.bucket_name,
+                ) from exc
+            logger.warning(
+                "Failed deleting object %s from bucket %s.",
+                storage_key,
+                self.bucket_name,
+            )
+            raise StorageOperationException(
+                self.bucket_name,
+                description=f"Deleting object '{storage_key}' failed.",
             ) from exc
