@@ -1,58 +1,71 @@
 # Loads settings from .env using Pydantic
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="forbid",
+    )
     # ---------------------------------------------------------
     # Application
     # ---------------------------------------------------------
 
     app_name: str = "Graph RAG Backend"
-    debug: bool = True
+    environment: Literal["development", "testing", "production"] = "development"
+    debug: bool = False
     api_prefix: str = "/api/v1"
 
     secret_key: SecretStr
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    reset_token_expire_minutes: int = 60
+    algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    access_token_expire_minutes: int = Field(default=30, gt=0)
+    reset_token_expire_minutes: int = Field(default=60, gt=0)
 
     # ---------------------------------------------------------
     # Database (e.g. PostgreSQL)
     # ---------------------------------------------------------
 
-    database_url: str
-    database_echo: bool = True
+    database_url: PostgresDsn
+    database_echo: bool = False
 
     # ---------------------------------------------------------
     # Blob Storage (e.g. MinIO S3)
     # ---------------------------------------------------------
 
-    # TODO: Store secrets safely as SecretStr
-    storage_url: str
-    storage_default_buckets: str
-    storage_access_key: str
-    storage_secret_key: str
-    storage_sse_customer_key: str
+    storage_endpoint: str
+    storage_access_key: SecretStr
+    storage_secret_key: SecretStr
+    storage_default_bucket: str = "files"
     storage_region: str = "us-east-1"
-    storage_secure: bool
+    storage_secure: bool = True
+    storage_sse_customer_key: SecretStr
+
+    # ---------------------------------------------------------
+    # Cache (e.g. Redis)
+    # ---------------------------------------------------------
+    cache_url: RedisDsn
+
+    # ---------------------------------------------------------
+    # Temporal
+    # ---------------------------------------------------------
+
+    temporal_endpoint: str
+    temporal_namespace: str = "default"
+    temporal_task_queue: str
 
     # ---------------------------------------------------------
     # Frontend
     # ---------------------------------------------------------
-    frontend_url: str
-
-    model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+    frontend_url: HttpUrl
 
 
 @lru_cache
