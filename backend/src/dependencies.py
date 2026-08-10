@@ -49,9 +49,9 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.storage_url,
-        access_key=settings.storage_access_key,
-        secret_key=settings.storage_secret_key,
+        endpoint=settings.storage_endpoint,
+        access_key=settings.storage_access_key.get_secret_value(),
+        secret_key=settings.storage_secret_key.get_secret_value(),
         region=settings.storage_region,
         secure=settings.storage_secure,
     )
@@ -82,9 +82,9 @@ def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository
 def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
-        bucket_name=settings.storage_default_buckets,
+        bucket_name=settings.storage_default_bucket,
         sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.storage_sse_customer_key)
+            key=base64.b64decode(settings.storage_sse_customer_key.get_secret_value())
         ),  # string to byte code
     )
     try:
