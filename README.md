@@ -33,7 +33,7 @@
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">Agentic Graph RAG Pipeline</h3>
+  <h3 align="center">MCP-powered Agentic GraphRAG</h3>
 
   <p align="center">
     An awesome README template to jumpstart your projects!
@@ -54,17 +54,18 @@
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
 
-* [About the Project](#about-the-project)
-  * [Built With](#built-with)
-* [Getting Started](#getting-started)
-  * [Prerequisites](#prerequisites)
-  * [Installation](#installation)
-* [Usage](#usage)
-* [Roadmap](#roadmap)
-* [Contributing](#contributing)
-* [License](#license)
-* [Contact](#contact)
-* [Acknowledgements](#acknowledgements)
+- [Table of Contents](#table-of-contents)
+- [About The Project](#about-the-project)
+  - [Built With](#built-with)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [Usage](#usage)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
+- [Acknowledgements](#acknowledgements)
 
 
 
@@ -201,150 +202,4 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 [license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: images/screenshot.png
-
-
-
-
-# Graph RAG
-An end-to-end agentic AI platform combining RAG, multi-step agent workflows, and production observability to transform unstructured data into structured business outputs (QA, Excel, PowerPoint).
-
-#### PostgreSQL
-Stores: 
-```
-users
-
-organizations
-
-documents
-
-ingestion_jobs
-
-agent_runs
-
-workflow_status
-
-evaluations
-
-feedback
-
-permissions
-
-audit_logs
-```
-
-Example
-```
-documents
-
-id
-organization_id
-filename
-source_type
-uploaded_by
-created_at
-status
-storage_location
-```
-
-
-#### Object Storage
-Use:
-
-- MinIO locally
-- S3 in production
-
-Structure:
-```
-bucket:
-
-company-data/
-
-
-amazon/
-
-   annual_report_2025.pdf
-
-   earnings_call.mp3
-
-
-microsoft/
-
-   10k_2025.pdf
-```
-
-
-#### Neo4j
-Stores information as knowledge graph.
-Allows to traverse and explore relationships.
-
-Entities:
-```
-Company
-
-Person
-
-Supplier
-
-Technology
-
-Product
-
-Risk
-
-Investment
-```
-
-Relationships:
-```
-Amazon
-   |
- OWNS
-   |
-AWS
-
-
-NVIDIA
-   |
-SUPPLIES
-   |
-Microsoft
-
-
-TSMC
-   |
-MANUFACTURES
-   |
-NVIDIA GPU
-```
-
-Per graph edge:
-```
-{
-relationship:"SUPPLIES",
-confidence:0.91,
-source_document:"nvidia_10k.pdf",
-page:42
-}
-``` 
-
-#### Qdrant
-Stores embedded chunks.
-Allows to find similar items.
-
-Example:
-```
-Vector:
-
-[0.123,0.542,...]
-
-
-Metadata:
-
-{
-document:"amazon_10k.pdf",
-page:35,
-company:"Amazon",
-section:"AI Strategy"
-}
-```
+[product-screenshot]: docs/system_design.png
