@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from src.shared.enums import UserRole
+from src.shared.enums.user import UserRole
 
 
 @dataclass(slots=True)
@@ -17,7 +17,7 @@ class Principal:
     user_id: UUID
     tenant_id: UUID
     email: str
-    roles: tuple[UserRole, ...] = field(default_factory=lambda: (UserRole.USER,))
+    roles: tuple[UserRole, ...] = field(default_factory=tuple)
 
 
 @dataclass(slots=True, frozen=True)

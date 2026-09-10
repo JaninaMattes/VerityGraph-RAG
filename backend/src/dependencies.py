@@ -28,7 +28,6 @@ from src.infrastructure.storage.minio.storage import MinioStorage
 from src.shared.core.config import Settings, get_settings
 from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import StorageException
-from src.workflows.client import WorkflowClient
 
 logger = get_logger("api.dependencies")
 
@@ -55,11 +54,6 @@ def get_minio_client(settings: SettingsDep) -> Minio:
         region=settings.storage_region,
         secure=settings.storage_secure,
     )
-
-
-def get_workflow_client() -> WorkflowClient:
-    return WorkflowClient()
-
 
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
@@ -100,9 +94,8 @@ def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> Minio
 def get_document_service(
     repository: Annotated[PostgresDocumentRepository, Depends(get_document_repository)],
     storage: Annotated[MinioStorage, Depends(get_storage_provider)],
-    workflow: Annotated[WorkflowClient, Depends(get_workflow_client)],
 ) -> DocumentService:
-    return DocumentService(repository=repository, storage=storage, workflow=workflow)
+    return DocumentService(repository=repository, storage=storage)
 
 
 def get_tenant_service(
