@@ -60,6 +60,7 @@
 - [System Design](#system-design)
   - [Built With](#built-with)
 - [Getting Started](#getting-started)
+  - [Project Structure](#project-structure)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
@@ -115,6 +116,24 @@ This section should list any major frameworks that you built your project using.
 This is an example of how you may give instructions on setting up your project locally.
 To get a local copy up and running follow these simple example steps.
 
+### Project Structure
+
+```
+src/
+├── api/                # FastAPI REST endpoints
+├── domain/             # Core Business Logic
+│   ├── chunks/         # Text chunking logic
+│   ├── documents/      # Document management
+│   ├── graph/          # GraphRAG (Entities, Relationships, Communities)
+│   └── ingestions/     # Pipeline orchestration
+├── infrastructure/     # External systems
+│   ├── database/       # Postgres / pgvector
+│   └── storage/        # Minio (Raw files)
+├── mcp/                # Model Context Protocol Server & Tools
+├── evaluation/         # RAGAS / Benchmarking
+├── observability/      # Logging, Tracing
+└── shared/             # Config, Exceptions, Base Schemas
+```
 ### Prerequisites
 
 This is an example of how to list things you need to use the software and how to install them.
