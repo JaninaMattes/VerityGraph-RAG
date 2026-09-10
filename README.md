@@ -30,13 +30,13 @@
 <br />
 <p align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="images/logo.png" alt="Logo" width="80" height="80">
+    <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
   </a>
 
   <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
 
   <p align="center">
-    An awesome README template to jumpstart your projects!
+    An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     <br />
     <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
     <br />
@@ -56,6 +56,8 @@
 
 - [Table of Contents](#table-of-contents)
 - [About The Project](#about-the-project)
+- [Key Capabilities \& Demo Use Case](#key-capabilities--demo-use-case)
+- [System Design](#system-design)
   - [Built With](#built-with)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
@@ -72,18 +74,32 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
+Vanilla RAG systems commonly fail at complex, multi-hop relational queries (e.g., "How are the Big 5 US tech companies investing in each other?") and suffer from hallucinations because they lack structured context and source traceability.
+
+VerityGraph on the other hand is an end-to-end Agentic GraphRAG system that combines the semantic search of Vector Databases (Qdrant) with the relational reasoning of Knowledge Graphs (Neo4j). Powered by the Model Context Protocol (MCP) and orchestrated via Temporal.io, it ingests raw financial documents asynchronously and exposes them through a stateful LLM agent.
+
+## Key Capabilities & Demo Use Case
+A user can gain deeper insights into structural information and relations of unstructured files using VerityGraph. For instance, a user might want to upload 500 pages of SEC 10-K filings and investment reports for a specific range of years, before asking the system:
+
+_"Show me graphically how much and how the investment of company 'X' relates to the largest five tech companies in the USA over a timespan of 5 years starting at 2021."_
+
+Instead of simply returning static chunks of text or a summary of text, VerityGraph performs the following:
+
+1. Reasons & Queries: The Agentic workflow decomposes the prompt, queries the Neo4j Knowledge Graph for relational investment data, and retrieves specific chunks from Qdrant.
+2. Visualizes: It dynamically generates a React-based interactive dashboard rendering a node-edge graph of the investment flows and capital amounts.
+3. Proves (Traceability): Every node and metric in the dashboard is clickable, revealing the exact source document, page number, and text snippet; just like citations that we would expect in a peer-reviewed research paper.
+4. Exports: Users can export the generated visual dashboard and the citation bibliography as a PDF/Excel report.
+
+## System Design
 [![Product Name Screen Shot][product-screenshot]](https://example.com)
 
-There are many great README templates available on GitHub, however, I didn't find one that really suit my needs so I created this enhanced one. I want to create a README template so amazing that it'll be the last one you ever need.
 
-Here's why:
-* Your time should be focused on creating something amazing. A project that solves a problem and helps others
-* You shouldn't be doing the same tasks over and over like creating a README from scratch
-* You should element DRY principles to the rest of your life :smile:
+1. Decoupled Async Ingestion: FastAPI handles user uploads, while Temporal.io orchestrates fault-tolerant, long-running parsing, chunking, and embedding workflows (scaling from 10 to 10k+ files/day).
+2. Hybrid Retrieval: Combines Neo4j (Cypher) for topology/graph traversal and Qdrant (HNSW) for semantic vector search.
+3. MCP Integration: Standardizes how the LLM agent safely calls external tools (Web Search, Python code execution for charting, Database queries).
+4. Observability: Full OpenTelemetry tracing across the API, Temporal workflows, and LLM calls.
 
-Of course, no one template will serve all projects since your needs may be different. So I'll be adding more in the near future. You may also suggest changes by forking this repo and creating a pull request or opening an issue.
-
-A list of commonly used resources that I find helpful are listed in the acknowledgements.
+A list of commonly used resources are listed in the acknowledgements.
 
 ### Built With
 This section should list any major frameworks that you built your project using. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
