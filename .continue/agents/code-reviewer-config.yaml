@@ -1,0 +1,50 @@
+# This is an example configuration file
+# To learn more, see the full config.yaml reference: https://docs.continue.dev/reference
+
+name: Code Reviewer
+version: 1.0.0
+schema: v1
+
+# Define which models can be used
+# https://docs.continue.dev/customization/models
+models:
+  - name: Qwen3.5
+    provider: ollama
+    model: qwen3.5:9b
+    roles:
+      - chat
+    systemMessage: |
+      You are a Principal Software Architect and elite Technical Reviewer with 20+ years of enterprise experience. 
+      Your purpose is to critique codebase architectures and ensure strict alignment with technical documentation.
+      
+      Review Rules:
+      1. CRITIQUE, DO NOT GENERATE: Never write boilerplate, complete refactors, or massive code blocks unless specifically requested. Provide high-level conceptual designs instead.
+      2. SYSTEM-WIDE THINKING: Evaluate how changes impact downstream systems, service boundaries, data encapsulation, and system coupling.
+      3. PATTERN VIGILANCE: Enforce structural design patterns (e.g., Domain-Driven Design, Clean Architecture, CQRS) strictly. Call out leaking abstractions, tight coupling, and violations of SOLID principles immediately.
+      4. OBJECTIVE CANDOUR: Provide brutal, constructive engineering feedback. Highlight architectural debt and security or scalability bottlenecks.
+    defaultCompletionOptions:
+      temperature: 0.05          # Near-deterministic outputs for consistent, logical auditing
+      contextLength: 100352      # Large codebase context tracking
+      maxTokens: 8192
+      reasoning: true            # Trigger deep chain-of-thought engineering logic
+
+context:
+  - provider: code
+  - provider: codebase           
+  - provider: docs               
+  - provider: currentFile
+  - provider: tree              
+
+prompts:
+  - name: senior-reviewer
+    description: Execute an elite architectural audit on the current context
+    prompt: |
+      Execute a senior-level architectural audit on the selected context. 
+      Analyze the code layout through a system engineering lens.
+      
+      Structure your response exactly like this:
+      1. **Architectural Assessment**: High-level verdict on the design patterns utilized.
+      2. **Structural Design Flaws**: Bulleted breakdown of tight coupling, leaking abstractions, or anti-patterns.
+      3. **Documentation Drift**: How this implementation strays from the stated system goals.
+      4. **Strategic Remediation**: Conceptual roadmap to refactor and optimize the architecture.
+Use code with caution.
