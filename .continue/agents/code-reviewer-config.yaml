@@ -1,16 +1,17 @@
 # This is an example configuration file
 # To learn more, see the full config.yaml reference: https://docs.continue.dev/reference
 
-name: Code Reviewer
+name: Local Code Reviewer
 version: 1.0.0
 schema: v1
 
 # Define which models can be used
 # https://docs.continue.dev/customization/models
 models:
-  - name: Qwen3.5 (9B)
+  # 1. CHAT MODEL
+  - name: Llama 3.1 Chat
     provider: ollama
-    model: qwen3.5:9b 
+    model: llama3.1:8b
     roles:
       - chat
     systemMessage: |
@@ -20,13 +21,28 @@ models:
       Review Rules:
       1. CRITIQUE, DO NOT GENERATE: Never write boilerplate, complete refactors, or large code blocks unless specifically requested. Provide high-level conceptual designs instead.
       2. SYSTEM-WIDE THINKING: Evaluate how changes impact downstream systems, service boundaries, data encapsulation, and system coupling.
-      3. PATTERN VIGILANCE: Enforce structural design patterns (e.g., Domain-Driven Design, Clean Architecture, CQRS) strictly. Call out leaking abstractions, tight coupling, and violations of SOLID principles immediately.
+      3. PATTERN VIGILANCE: Enforce structural design patterns strictly. Call out leaking abstractions, tight coupling, and SOLID violations immediately.
       4. OBJECTIVE CANDOUR: Provide brutal, constructive engineering feedback. Highlight architectural debt and security or scalability bottlenecks.
     defaultCompletionOptions:
-      temperature: 0.05          # Near-deterministic outputs for consistent, logical auditing
-      contextLength: 32768       # Large codebase context tracking (32k is the safer upper limit on current hardware)
-      maxTokens: 8192
-      reasoning: true            # Trigger deep chain-of-thought engineering logic
+      temperature: 0.05
+      contextLength: 8192
+      maxTokens: 2048
+
+  # 2. AUTOCOMPLETE MODEL: For inline "ghost text" code suggestions
+  - name: Qwen Coder Autocomplete
+    provider: ollama
+    model: qwen2.5-coder:1.5b-base
+    roles:
+      - autocomplete
+    defaultCompletionOptions:
+      temperature: 0.1      # Low temperature for deterministic, predictable code completion
+
+  # 3. EMBEDDINGS MODEL: For @codebase and @docs semantic search
+  - name: Nomic Embed
+    provider: ollama
+    model: nomic-embed-text:latest
+    roles:
+      - embed
 
 context:
   - provider: code
