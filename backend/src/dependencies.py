@@ -7,7 +7,6 @@ from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
@@ -28,17 +27,8 @@ from src.infrastructure.storage.minio.storage import MinioStorage
 from src.shared.core.config import Settings, get_settings
 from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import StorageException
-from src.workflows.client import WorkflowClient
 
 logger = get_logger("api.dependencies")
-
-# Dummy user authentication dependency
-def get_current_user() -> Principal:
-    return Principal(
-        user_id=uuid.uuid4(),
-        tenant_id=uuid.uuid4(),
-        email="dummy-email@mail.com",
-    )
 
 
 # Reuse settings dependency across sub-providers
@@ -49,17 +39,12 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.storage_endpoint,
-        access_key=settings.storage_access_key.get_secret_value(),
-        secret_key=settings.storage_secret_key.get_secret_value(),
-        region=settings.storage_region,
-        secure=settings.storage_secure,
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
+        region=settings.minio_region,
+        secure=settings.minio_secure,
     )
-
-
-def get_workflow_client() -> WorkflowClient:
-    return WorkflowClient()
-
 
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
@@ -79,12 +64,12 @@ def get_credentials_repository(session: DbSessionDep) -> PostgresCredentialsRepo
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
 
-def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
+def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
-        bucket_name=settings.storage_default_bucket,
+        bucket_name=settings.minio_default_bucket,
         sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.storage_sse_customer_key.get_secret_value())
+            key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
         ),  # string to byte code
     )
     try:
@@ -99,10 +84,9 @@ def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> Minio
 # Define dependencies for services
 def get_document_service(
     repository: Annotated[PostgresDocumentRepository, Depends(get_document_repository)],
-    storage: Annotated[MinioStorage, Depends(get_storage_provider)],
-    workflow: Annotated[WorkflowClient, Depends(get_workflow_client)],
+    storage: Annotated[MinioStorage, Depends(get_minio_provider)],
 ) -> DocumentService:
-    return DocumentService(repository=repository, storage=storage, workflow=workflow)
+    return DocumentService(repository=repository, storage=storage)
 
 
 def get_tenant_service(

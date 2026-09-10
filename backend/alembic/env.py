@@ -13,7 +13,7 @@ settings = get_settings()
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", str(settings.database_url))
+config.set_main_option("sqlalchemy.url", str(settings.postgres_url.unicode_string()))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -17,11 +17,10 @@ from src.shared.exception.exceptions import (
 )
 from src.shared.schemas.document import (
     CreateDocumentRequest,
-    DeleteResponse,
     DocumentResponse,
     PresignedURLResponse,
 )
-from src.workflows.ingestion.workflow import WorkflowClient
+
 
 logger = get_logger("api.domain.doc.service")
 
@@ -33,11 +32,9 @@ class DocumentService:
         self,
         repository: DocumentRepository,
         storage: StorageProvider,
-        workflow: WorkflowClient,
     ) -> None:
         self.repository = repository
         self.storage = storage
-        self.workflow = workflow
 
     async def create_upload_url(
         self,

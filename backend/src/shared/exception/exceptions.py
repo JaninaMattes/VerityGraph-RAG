@@ -69,7 +69,6 @@ class ObjectNotFoundException(NotFoundException):
         super().__init__(
             f"Object '{storage_key}' does not exist in bucket '{bucket_name}'."
         )
-
         self.storage_key = storage_key
         self.bucket_name = bucket_name
 

@@ -1,5 +1,4 @@
 import uuid
-from datetime import UTC, datetime
 
 from src.domain.credentials.entities import CredentialsEntity
 from src.domain.credentials.repository import CredentialsRepository
