@@ -7,7 +7,6 @@ from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.auth.dataclasses import Principal
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
@@ -30,14 +29,6 @@ from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import StorageException
 
 logger = get_logger("api.dependencies")
-
-# Dummy user authentication dependency
-def get_current_user() -> Principal:
-    return Principal(
-        user_id=uuid.uuid4(),
-        tenant_id=uuid.uuid4(),
-        email="dummy-email@mail.com",
-    )
 
 
 # Reuse settings dependency across sub-providers
