@@ -23,6 +23,7 @@ dependencies = [
     "temporalio>=1.30.0",
     "torch>=2.13.0",
     "transformers>=5.13.1",
+    "asyncpg>=0.31.0",
 ]
 
 [tool.fastapi]
