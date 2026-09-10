@@ -4,7 +4,6 @@ from fastapi.responses import JSONResponse
 from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import (
     AccessDeniedException,
-    DatabaseException,
     DatabaseInternalException,
     DatabaseOperationException,
     NotFoundException,
