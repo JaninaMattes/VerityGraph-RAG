@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="forbid",
+        extra="ignore",  # prevents crash
     )
     # ---------------------------------------------------------
     # Application
@@ -34,20 +34,20 @@ class Settings(BaseSettings):
     # Database (e.g. PostgreSQL)
     # ---------------------------------------------------------
 
-    database_url: PostgresDsn
-    database_echo: bool = False
+    postgres_url: PostgresDsn
+    postgres_echo: bool = False
 
     # ---------------------------------------------------------
-    # Blob Storage (e.g. MinIO S3)
+    # Blob Storagee (e.g. MinIO S3)
     # ---------------------------------------------------------
 
-    storage_endpoint: str
-    storage_access_key: SecretStr
-    storage_secret_key: SecretStr
-    storage_default_bucket: str = "files"
-    storage_region: str = "us-east-1"
-    storage_secure: bool = True
-    storage_sse_customer_key: SecretStr
+    minio_endpoint: str
+    minio_root_user: SecretStr
+    minio_root_password: SecretStr
+    minio_default_bucket: str = "files"
+    minio_region: str = "us-east-1"
+    minio_secure: bool = True
+    minio_sse_customer_key: SecretStr
 
     # ---------------------------------------------------------
     # Cache (e.g. Redis)

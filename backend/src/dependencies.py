@@ -48,11 +48,11 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.storage_endpoint,
-        access_key=settings.storage_access_key.get_secret_value(),
-        secret_key=settings.storage_secret_key.get_secret_value(),
-        region=settings.storage_region,
-        secure=settings.storage_secure,
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
+        region=settings.minio_region,
+        secure=settings.minio_secure,
     )
 
 # Reuse dependency across sub-providers
@@ -73,12 +73,12 @@ def get_credentials_repository(session: DbSessionDep) -> PostgresCredentialsRepo
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
 
-def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
+def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
-        bucket_name=settings.storage_default_bucket,
+        bucket_name=settings.minio_default_bucket,
         sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.storage_sse_customer_key.get_secret_value())
+            key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
         ),  # string to byte code
     )
     try:
@@ -93,7 +93,7 @@ def get_storage_provider(settings: SettingsDep, client: MinioClientDep) -> Minio
 # Define dependencies for services
 def get_document_service(
     repository: Annotated[PostgresDocumentRepository, Depends(get_document_repository)],
-    storage: Annotated[MinioStorage, Depends(get_storage_provider)],
+    storage: Annotated[MinioStorage, Depends(get_minio_provider)],
 ) -> DocumentService:
     return DocumentService(repository=repository, storage=storage)
 
