@@ -33,7 +33,7 @@
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h3 align="center">MCP-powered Agentic GraphRAG</h3>
+  <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
 
   <p align="center">
     An awesome README template to jumpstart your projects!
