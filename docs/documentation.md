@@ -38,7 +38,7 @@ The system distinguishes between source-derived information and model-generated 
 ### 2.3 Quality Attributes
 
 ## 3. System Architecture
-<img src="system_design.png" alt="System Design">
+<img src="images/system_design.png" alt="System Design">
 
 ### 3.1 Architecture Overview
 ### 3.2 Architectural Principles
