@@ -28,3 +28,8 @@ dependencies = [
 
 [tool.fastapi]
 entrypoint = "src.main:app"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.16.0",
+]
