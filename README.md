@@ -31,11 +31,13 @@
 <p align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
     <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
+    <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
   </a>
 
   <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
 
   <p align="center">
+    An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     <br />
     <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
@@ -101,6 +103,7 @@ A scalable GraphRAG pipeline, built around agents, with six core layers:
 3. MCP Integration: Standardizes how the LLM agent safely calls external tools (Web Search, Python code execution for charting, Database queries).
 4. Observability: Full OpenTelemetry tracing across the API, Temporal workflows, and LLM calls.
 
+A list of commonly used resources are listed in the acknowledgements.
 A list of commonly used resources are listed in the acknowledgements.
 
 ### Built With
