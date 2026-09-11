@@ -27,7 +27,7 @@ class IngestionJob(Base):
     )
 
     # Relationship
-    document: Mapped["Document"] = relationship(back_populates="ingestion_jobs")
+    document: Mapped[Document] = relationship(back_populates="ingestion_jobs")
 
     # Properties
     workflow_id: Mapped[str | None] = mapped_column(String(255))

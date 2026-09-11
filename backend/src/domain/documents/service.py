@@ -17,10 +17,9 @@ from src.shared.exception.exceptions import (
 )
 from src.shared.schemas.document import (
     CreateDocumentRequest,
-    DocumentResponse,
+    DocumentStatusResponse,
     PresignedURLResponse,
 )
-
 
 logger = get_logger("api.domain.doc.service")
 
@@ -125,7 +124,7 @@ class DocumentService:
     async def finalize_upload(
         self,
         document_id: uuid.UUID,
-    ) -> DocumentResponse:
+    ) -> DocumentStatusResponse:
         try:
             # Fetch document metadata
             db_document = await self.repository.get_one(document_id)
@@ -143,7 +142,7 @@ class DocumentService:
 
             # Persist document metdata
             updated = await self.repository.update(db_document)
-            return DocumentResponse(
+            return DocumentStatusResponse(
                 document_id=updated.document_id, status=updated.status
             )
         except DatabaseException:
@@ -159,7 +158,7 @@ class DocumentService:
                 "Failed to update document metadata.",
             ) from exc
 
-    async def delete_document_metadata(self, document_id: uuid.UUID) -> None:
+    async def remove_document(self, document_id: uuid.UUID) -> None:
         try:
             # Retrieve actual document
             db_document = await self.repository.get_one(document_id)

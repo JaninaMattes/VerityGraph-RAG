@@ -37,7 +37,7 @@ class DocumentChunk(Base):
     )
 
     # Relationship
-    document: Mapped["Document"] = relationship(back_populates="document_chunks")
+    document: Mapped[Document] = relationship(back_populates="document_chunks")
 
     # Properties
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)  # ordering

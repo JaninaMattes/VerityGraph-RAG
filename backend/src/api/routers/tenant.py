@@ -2,7 +2,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from src.dependencies import get_tenant_service
+
+from src.api.dependencies import get_tenant_service
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.service import TenantService
 from src.shared.core.logger import get_logger
@@ -28,6 +29,19 @@ async def create_tenant(
     request: CreateTenantRequest,
     service: TenantServiceDep,
 ) -> TenantResponse:
+    """This endpoint creates a new tenant.
+
+    Attributes
+    ----------
+    request: CreateTenantRequest
+        The request body containing the organisation name.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse
+        The response containing the created tenant.
+    """
     return await service.create(Tenant(request.organisation))
 
 
@@ -40,6 +54,19 @@ async def read_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
 ) -> TenantResponse:
+    """This endpoint retrieves a tenant by its ID.
+
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be retrieved.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse
+        The response containing the retrieved tenant.
+    """
     return await service.get(tenant_id)
 
 
@@ -53,6 +80,21 @@ async def update_tenant(
     request: UpdateTenantRequest,
     service: TenantServiceDep,
 ) -> TenantResponse:
+    """This endpoint updates a tenant's information.
+
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be updated.
+    request: UpdateTenantRequest
+      The request body containing the updated tenant information.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse: The response containing the updated tenant.
+
+    """
     return await service.update(
         UpdateTenant(tenant_id, organisation=request.organisation)
     )
@@ -66,4 +108,15 @@ async def revoke_tenant(
     tenant_id: UUID,
     service: TenantServiceDep,
 ) -> None:
+    """This endpoint revokes a tenant's access.
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be revoked.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    None: The response indicating the successful deletion of the tenant.
+    """
     await service.delete(tenant_id)

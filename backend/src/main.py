@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 
-from src.api.routers import document, health, hello_world, tenant, user
+from src.api.routers import document, health, tenant, user
 from src.infrastructure.database.postgres.engine import async_engine
 from src.shared.core.config import get_settings
 from src.shared.core.logger import get_logger, setup_logging
@@ -30,7 +30,6 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 register_exception_handlers(app)
 
 # Router handling
-app.include_router(hello_world.router, prefix=settings.api_prefix, tags=["Hello-World"])
 app.include_router(health.router, prefix=settings.api_prefix, tags=["Health"])
 app.include_router(tenant.router, prefix=settings.api_prefix, tags=["Tenants"])
 app.include_router(user.router, prefix=settings.api_prefix, tags=["Users"])
