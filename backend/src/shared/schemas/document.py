@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from src.shared.enums.document import DocumentStatus
 
-"""The schema module provides the building blocks for ..."""
+"""The schema module provides the building blocks for the application."""
 
 
 class CreateDocumentRequest(BaseModel):
@@ -13,7 +13,7 @@ class CreateDocumentRequest(BaseModel):
     tenant_id: UUID
 
 
-class DocumentResponse(BaseModel):
+class DocumentStatusResponse(BaseModel):
     document_id: UUID
     status: DocumentStatus
 
