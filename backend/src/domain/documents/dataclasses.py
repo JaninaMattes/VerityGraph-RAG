@@ -19,14 +19,13 @@ class StorageKey:
     def document(
         cls,
         *,
-        tenant_id: UUID,
         document_id: UUID,
         namespace: str = "documents",
         extension: str | None = None,
-    ) -> StorageKey:
+    ) -> "StorageKey":
         now = datetime.now(UTC)
 
-        key = f"{tenant_id}/{namespace}/{now.year}/{now.month:02d}/{document_id}"
+        key = f"{namespace}/{now.year}/{now.month:02d}/{document_id}"
 
         if extension:
             key += f".{extension.lstrip('.')}"

@@ -3,13 +3,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies import (
-    get_document_service,
-)
+from src.api.dependencies import get_document_service
 from src.domain.documents.service import DocumentService
 from src.shared.core.logger import get_logger
 from src.shared.schemas.document import (
-    CreateDocumentRequest,
     PresignedURLResponse,
 )
 
@@ -26,7 +23,6 @@ DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
     response_model=PresignedURLResponse,
 )
 async def create_upload_url(
-    request: CreateDocumentRequest,
     service: DocServiceDep,
     namespace: str = "documents",
 ) -> PresignedURLResponse:
@@ -44,7 +40,7 @@ async def create_upload_url(
     PresignedURLResponse
        The response containing the presigned URL and expiration time.
     """
-    return await service.create_upload_url(request, namespace=namespace)
+    return await service.create_upload_url(namespace=namespace)
 
 
 @router.get(

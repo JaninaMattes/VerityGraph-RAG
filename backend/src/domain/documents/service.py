@@ -1,14 +1,12 @@
 # src/domain/documents/service.py
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from src.domain.documents.dataclasses import StorageKey
-from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.core.logger import get_logger
-from src.shared.enums.document import DocumentStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
@@ -16,7 +14,6 @@ from src.shared.exception.exceptions import (
     StorageException,
 )
 from src.shared.schemas.document import (
-    CreateDocumentRequest,
     DocumentStatusResponse,
     PresignedURLResponse,
 )
@@ -37,31 +34,17 @@ class DocumentService:
 
     async def create_upload_url(
         self,
-        file: CreateDocumentRequest,
         namespace: str = "documents",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
-        now = datetime.now(UTC)
         document_id = uuid.uuid4()
         try:
             storage_key = StorageKey.document(
-                tenant_id=file.tenant_id,
                 document_id=document_id,
                 namespace=namespace,
             )
-            # Persist metadata
-            entity = DocumentEntity(
-                document_id=document_id,
-                tenant_id=file.tenant_id,
-                filename=file.filename,
-                storage_key=storage_key,
-                status=DocumentStatus.UPLOAD_PENDING,  # upload in progress
-                created_at=now,
-                updated_at=now,
-            )
-            db_document = await self.repository.create(document=entity)
 
             # Create presigned URL
             expires_at = timedelta(minutes=30)  # 30 mins expiration
@@ -72,7 +55,7 @@ class DocumentService:
                 method="PUT",
             )
             return PresignedURLResponse(
-                document_id=db_document.document_id,
+                document_id=document_id,
                 url=presigned_url,
                 expires_at=expires_at,
             )

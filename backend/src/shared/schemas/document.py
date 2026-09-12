@@ -8,11 +8,6 @@ from src.shared.enums.document import DocumentStatus
 """The schema module provides the building blocks for the application."""
 
 
-class CreateDocumentRequest(BaseModel):
-    filename: str
-    tenant_id: UUID
-
-
 class DocumentStatusResponse(BaseModel):
     document_id: UUID
     status: DocumentStatus
