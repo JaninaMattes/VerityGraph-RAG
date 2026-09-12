@@ -4,11 +4,11 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from src.shared.core.logger import get_logger
 from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
 from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
 from src.infrastructure.database.postgres.models.tenant import Tenant
+from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import (
     DatabaseInternalException,
     DatabaseOperationException,

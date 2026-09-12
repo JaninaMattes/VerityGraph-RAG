@@ -1,18 +1,13 @@
 import base64
-import uuid
 from typing import Annotated
 
 from fastapi import Depends
 from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
-from src.infrastructure.database.postgres.repositories.credentials import (
-    PostgresCredentialsRepository,
-)
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
@@ -44,7 +39,13 @@ def get_minio_client(settings: SettingsDep) -> Minio:
         secret_key=settings.minio_root_password.get_secret_value(),
         region=settings.minio_region,
         secure=settings.minio_secure,
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
+        region=settings.minio_region,
+        secure=settings.minio_secure,
     )
+
 
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
@@ -58,17 +59,18 @@ def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
 def get_user_repository(session: DbSessionDep) -> PostgresUserRepository:
     return PostgresUserRepository(session=session)
 
-def get_credentials_repository(session: DbSessionDep) -> PostgresCredentialsRepository:
-    return PostgresCredentialsRepository(session=session)
 
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
+
 
 def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
     storage = MinioStorage(
         client=client,
         bucket_name=settings.minio_default_bucket,
+        bucket_name=settings.minio_default_bucket,
         sse_key=SseCustomerKey(
+            key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
             key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
         ),  # string to byte code
     )
@@ -85,7 +87,9 @@ def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioSt
 def get_document_service(
     repository: Annotated[PostgresDocumentRepository, Depends(get_document_repository)],
     storage: Annotated[MinioStorage, Depends(get_minio_provider)],
+    storage: Annotated[MinioStorage, Depends(get_minio_provider)],
 ) -> DocumentService:
+    return DocumentService(repository=repository, storage=storage)
     return DocumentService(repository=repository, storage=storage)
 
 
@@ -97,10 +101,5 @@ def get_tenant_service(
 
 def get_user_service(
     user_repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
-    credentials_repository: Annotated[
-        PostgresCredentialsRepository, Depends(get_credentials_repository)
-    ],
 ) -> UserService:
-    return UserService(
-        user_repository=user_repository, credentials_repository=credentials_repository
-    )
+    return UserService(user_repository=user_repository)

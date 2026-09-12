@@ -2,8 +2,8 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.shared.core.logger import get_logger
 from src.infrastructure.database.postgres.engine import async_engine
+from src.shared.core.logger import get_logger
 
 logger = get_logger("api.infrastructure.postgres")
 

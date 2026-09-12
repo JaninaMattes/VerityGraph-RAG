@@ -4,13 +4,13 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from src.shared.core.logger import get_logger
 from src.domain.ingestions.entities import IngestionJobEntity
 from src.domain.ingestions.repository import IngestionJobRepository
 from src.infrastructure.database.postgres.mapper.ingestionjob import (
     IngestionJobMapper,
 )
 from src.infrastructure.database.postgres.models.ingestion import IngestionJob
+from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import (
     DatabaseInternalException,
     DatabaseOperationException,

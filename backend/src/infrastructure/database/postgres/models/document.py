@@ -30,11 +30,11 @@ class Document(Base):
     )
 
     # Relationship
-    tenant: Mapped["Tenant"] = relationship(back_populates="documents")
-    ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(
+    tenant: Mapped[Tenant] = relationship(back_populates="documents")
+    ingestion_jobs: Mapped[list[IngestionJob]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
-    document_chunks: Mapped[list["DocumentChunk"]] = relationship(
+    document_chunks: Mapped[list[DocumentChunk]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 

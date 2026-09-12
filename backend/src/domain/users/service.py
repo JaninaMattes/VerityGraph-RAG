@@ -1,12 +1,9 @@
 import uuid
 
-from src.domain.credentials.entities import CredentialsEntity
-from src.domain.credentials.repository import CredentialsRepository
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
 from src.shared.core.logger import get_logger
-from src.shared.enums.credentials import CredentialStatus
 from src.shared.enums.user import UserRole, UserStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
@@ -24,10 +21,8 @@ class UserService:
     def __init__(
         self,
         user_repository: UserRepository,
-        credentials_repository: CredentialsRepository,
     ) -> None:
         self.user_repository = user_repository
-        self.credentials_repository = credentials_repository
 
     async def create(self, user: User, tenant_id: uuid.UUID) -> UserResponse:
         # Randomly generate new UUID
@@ -48,17 +43,6 @@ class UserService:
 
         try:
             db_user = await self.user_repository.create(entity)
-            # creade initial credentials
-            credentials_id = uuid.uuid4()
-            credentials = CredentialsEntity(
-                credentials_id=credentials_id,
-                user_id=db_user.user_id,
-                password_hash=user.password_hash,
-                status=CredentialStatus.CREATED,
-                created_at=now,
-                updated_at=now,
-            )
-            await self.credentials_repository.create(credentials)
             return UserResponse(
                 user_id=db_user.user_id,
                 username=db_user.username,

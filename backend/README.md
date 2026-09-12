@@ -172,3 +172,81 @@ backend/
         ├── metrics.py
         └── logging.py
 ```
+
+### Project Structure
+
+```
+src/
+├── api/                    # ONLINE SERVING LAYER (FastAPI HTTP/WebSocket)
+│   ├── routers/            # HTTP endpoints (chat, upload, health)
+│   ├── middleware.py       # Auth, CORS, Logging
+│   └── dependencies.py     # FastAPI dependency injection
+│
+├── agents/                 # AGENTIC ORCHESTRATION (LangGraph)
+│   ├── state.py            # AgentState (TypedDict)
+│   ├── workflows/          # Graph definitions (e.g., rag_graph.py)
+│   └── nodes/              # Planner, Retriever, Responder, Tool nodes
+│
+├── domain/                 # CORE BUSINESS LOGIC (DDD - Keep as is)
+│   ├── documents/          # Entities, Repositories (Interfaces), Services
+│   ├── chunks/             # Entities, Repositories, Services
+│   ├── ingestions/         # Job tracking, state management
+│   ├── graph/              #  Graph entities (Nodes, Edges) & logic
+│   ├── tenants/            # Multi-tenancy logic
+│   └── users/              # User logic
+│
+├── infrastructure/         #  EXTERNAL SYSTEMS & ADAPTERS
+│   ├── database/
+│   │   ├── postgres/       # SQLAlchemy setup, Repositories impl
+│   │   ├── neo4j/          # Neo4j driver, session, Cypher queries
+│   │   └── qdrant/         # Qdrant client, vector search
+│   ├── message_broker/     # Kafka/Redpanda producers & consumers
+│   ├── storage/            # MinIO/S3 client
+│   └── ai/                 # LLM, Embedding, Reranker clients (from article)
+│       ├── llm.py
+│       ├── embeddings.py
+│       └── rerankers.py
+│
+├── pipelines/              # OFFLINE DATA PROCESSING (From Article)
+│   └── ingestion/
+│       ├── config.py       # Chunk sizes, batch sizes
+│       ├── loaders/        # PDF, DOCX, HTML parsers
+│       ├── chunking/       # Semantic splitters, metadata enrichment
+│       ├── embedding/      # Batch embedders (calls infrastructure/ai)
+│       ├── graph/          # Entity extraction & Ontology schema
+│       └── indexing/       # Writers for Postgres, Qdrant, Neo4j
+│
+├── mcp/                    #  MODEL CONTEXT PROTOCOL (Agent Interface)
+│   ├── server.py           # MCP Server definition
+│   └── tools/              # Exposed tools (graph_search, vector_search)
+│
+├── evaluation/             # QUALITY & BENCHMARKS
+│   ├── datasets.py
+│   ├── ragas.py
+│   └── scoring.py
+│
+── observability/          # MONITORING (Moved from shared for visibility)
+│   ├── logging.py
+│   ├── metrics.py
+│   └── tracing.py
+│
+└── shared/                 # SHARED UTILITIES (Kept to minimize refactoring)
+    ├── core/               # Pydantic Settings (config.py)
+    ├── schemas/            # Pydantic models for API requests/responses
+    ├── enums/              # Enums (DocumentStatus, etc.)
+    └── exceptions/         # Custom exceptions
+```
+
+## Event-driven Pattern
+
+To maintain scalability and remove potential bottleneck form FastAPI, this project entirely decouple upload from processing of the uploaded file.
+
+```
+1. User uploads → FastAPI creates presigned URL
+2. FastAPI creates Document record: status="UPLOAD_PENDING"
+3. Client uploads directly to MinIO
+4. MinIO triggers Kafka event: "file.uploaded"
+5. Kafka Consumer updates: status="UPLOADED"
+6. Kafka Consumer triggers Temporal workflow
+7. Temporal workflow updates: status="PROCESSING" → "COMPLETED"
+```

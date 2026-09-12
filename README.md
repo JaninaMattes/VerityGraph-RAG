@@ -31,11 +31,13 @@
 <p align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
     <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
+    <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
   </a>
 
   <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
 
   <p align="center">
+    An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     <br />
     <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
@@ -60,7 +62,7 @@
 - [System Design](#system-design)
   - [Built With](#built-with)
 - [Getting Started](#getting-started)
-  - [Project Structure](#project-structure)
+  - [Project Backend Structure](#project-backend-structure)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
@@ -92,14 +94,16 @@ Instead of simply returning static chunks of text or a summary of text, VerityGr
 4. Exports: Users can export the generated visual dashboard and the citation bibliography as a PDF/Excel report.
 
 ## System Design
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
+![System Design Schema Screen Shot](./docs/images/system_design.png)
 
+A scalable GraphRAG pipeline, built around agents, with six core layers:
 
-1. Decoupled Async Ingestion: FastAPI handles user uploads, while Temporal.io orchestrates fault-tolerant, long-running parsing, chunking, and embedding workflows (scaling from 10 to 10k+ files/day).
+1. Data Ingestion Layer: Converts raw input data (e.g., PDFs, CSVs) into structured knowledge via document loading, chunking, and indexing; scalable with S3, RDBMS, and Ray.
 2. Hybrid Retrieval: Combines Neo4j (Cypher) for topology/graph traversal and Qdrant (HNSW) for semantic vector search.
 3. MCP Integration: Standardizes how the LLM agent safely calls external tools (Web Search, Python code execution for charting, Database queries).
 4. Observability: Full OpenTelemetry tracing across the API, Temporal workflows, and LLM calls.
 
+A list of commonly used resources are listed in the acknowledgements.
 A list of commonly used resources are listed in the acknowledgements.
 
 ### Built With
@@ -116,24 +120,47 @@ This section should list any major frameworks that you built your project using.
 This is an example of how you may give instructions on setting up your project locally.
 To get a local copy up and running follow these simple example steps.
 
-### Project Structure
+### Project Backend Structure
+
+Vanilla agentic RAG pipelines are defined over a codebase that currently typically contains a single vector database, some AI models, and a simple ingestion pipeline. However, for this project the structure is broken up into smaller manageable components to avoid the complexity and coupling that is often found in a monolithic codebase. The following is a list of the components that are broken out into their own folders:
 
 ```
 src/
-├── api/                # FastAPI REST endpoints
-├── domain/             # Core Business Logic
-│   ├── chunks/         # Text chunking logic
-│   ├── documents/      # Document management
-│   ├── graph/          # GraphRAG (Entities, Relationships, Communities)
-│   └── ingestions/     # Pipeline orchestration
-├── infrastructure/     # External systems
-│   ├── database/       # Postgres / pgvector
-│   └── storage/        # Minio (Raw files)
-├── mcp/                # Model Context Protocol Server & Tools
-├── evaluation/         # RAGAS / Benchmarking
-├── observability/      # Logging, Tracing
-└── shared/             # Config, Exceptions, Base Schemas
+├── api/                    # ONLINE SERVING LAYER (FastAPI HTTP/WebSocket)
+│   ├── routers/            # HTTP endpoints (LLM chat, presigned URL generation, health)
+│   ├── middleware.py       # Auth, CORS, Logging
+│   └── dependencies.py     # FastAPI dependency injection
+│
+├── agents/                 # AGENTIC ORCHESTRATION (LangGraph)
+├── domain/                 # CORE BUSINESS LOGIC (Domain Driven Design)
+├── infrastructure/         # DATA STORAGE (MinIO/S3), EXTERNAL SYSTEMS & ADAPTERS
+│   ├── database/
+│   │   ├── postgres/       # SQLAlchemy setup, Repositories impl
+│   │   ├── neo4j/          # Neo4j driver, session, Cypher queries
+│   │   └── qdrant/         # Qdrant client, vector search
+│   ├── message_broker/     # Kafka/Redpanda producers & consumers
+│   ├── storage/            # MinIO/S3 client
+│   └── models/             # AI models (LLM, Embedding, Reranker clients)
+│
+├── pipelines/              # OFFLINE DATA PROCESSING
+│   └── ingestion/
+│       ├── config.py       # Chunk sizes, batch sizes
+│       ├── loaders/        # PDF, DOCX, HTML parsers
+│       ├── chunking/       # Semantic splitters, metadata enrichment
+│       ├── embedding/      # Batch embedders (calls infrastructure/ai)
+│       ├── graph/          # Entity extraction & Ontology schema
+│       └── indexing/       # Writers for Postgres, Qdrant, Neo4j
+│
+├── mcp/                    # MODEL CONTEXT PROTOCOL (Agent Interface)
+├── evaluation/             # QUALITY & BENCHMARKS
+├── observability/          # MONITORING
+└── shared/                 # SHARED UTILITIES
+    ├── core/               # Pydantic Settings (config.py)
+    ├── schemas/            # Pydantic models for API requests/responses
+    ├── enums/              # Enums (DocumentStatus, etc.)
+    └── exceptions/         # Custom exceptions
 ```
+
 ### Prerequisites
 
 This is an example of how to list things you need to use the software and how to install them.
