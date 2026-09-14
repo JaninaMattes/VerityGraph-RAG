@@ -5,6 +5,7 @@ from fastapi import Depends
 from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
@@ -39,11 +40,6 @@ def get_minio_client(settings: SettingsDep) -> Minio:
         secret_key=settings.minio_root_password.get_secret_value(),
         region=settings.minio_region,
         secure=settings.minio_secure,
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_root_user.get_secret_value(),
-        secret_key=settings.minio_root_password.get_secret_value(),
-        region=settings.minio_region,
-        secure=settings.minio_secure,
     )
 
 
@@ -68,9 +64,7 @@ def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioSt
     storage = MinioStorage(
         client=client,
         bucket_name=settings.minio_default_bucket,
-        bucket_name=settings.minio_default_bucket,
         sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
             key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
         ),  # string to byte code
     )
@@ -86,7 +80,6 @@ def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioSt
 # Define dependencies for services
 def get_document_service(
     repository: Annotated[PostgresDocumentRepository, Depends(get_document_repository)],
-    storage: Annotated[MinioStorage, Depends(get_minio_provider)],
     storage: Annotated[MinioStorage, Depends(get_minio_provider)],
 ) -> DocumentService:
     return DocumentService(repository=repository, storage=storage)

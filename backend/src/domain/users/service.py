@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.entities import UserEntity

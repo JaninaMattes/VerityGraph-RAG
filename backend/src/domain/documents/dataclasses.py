@@ -23,7 +23,7 @@ class StorageKey:
         document_id: UUID,
         namespace: str = "documents",
         extension: str | None = None,
-    ) -> StorageKey:
+    ) -> "StorageKey":
         now = datetime.now(UTC)
 
         key = f"{tenant_id}/{namespace}/{now.year}/{now.month:02d}/{document_id}"

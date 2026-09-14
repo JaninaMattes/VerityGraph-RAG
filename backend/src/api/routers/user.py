@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+
 from src.api.dependencies import get_user_service
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.service import UserService
