@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -11,6 +12,7 @@ from src.shared.enums.storage import StorageProvider
 class StorageKey:
     """
     Canonical object identifier inside blob storage.
+    Follows S3/MinIO best practices for lifecycle management and tenant isolation.
     """
 
     value: str
@@ -19,17 +21,27 @@ class StorageKey:
     def document(
         cls,
         *,
-        tenant_id: UUID,
         document_id: UUID,
-        namespace: str = "documents",
-        extension: str | None = None,
-    ) -> StorageKey:
+        tenant_id: UUID,
+        namespace: str,
+        original_filename: str | None = None,  # allows to infer extension
+    ) -> "StorageKey":
         now = datetime.now(UTC)
-
+        # Clean namespace
+        namespace = re.sub(r"[^a-zA-Z0-9\-]", "", namespace).lower() or "files"
         key = f"{tenant_id}/{namespace}/{now.year}/{now.month:02d}/{document_id}"
 
-        if extension:
-            key += f".{extension.lstrip('.')}"
+        # Handle optional extension
+        if original_filename:
+            ext = (
+                original_filename.rsplit(".", 1)[-1]
+                if "." in original_filename
+                else None
+            )
+            if ext:
+                safe_ext = re.sub(r"[^a-zA-Z0-9]", "", ext).lower()
+                if safe_ext:
+                    key += f".{safe_ext}"
 
         return cls(key)
 

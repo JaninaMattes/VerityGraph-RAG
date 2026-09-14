@@ -3,13 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies import (
-    get_document_service,
-)
+from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
 from src.shared.core.logger import get_logger
 from src.shared.schemas.document import (
-    CreateDocumentRequest,
+    CreateUploadRequest,
     PresignedURLResponse,
 )
 
@@ -18,7 +16,7 @@ logger = get_logger("api.routers.document")
 router = APIRouter()
 
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
-
+TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
 @router.post(
     "/documents",
@@ -26,9 +24,9 @@ DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
     response_model=PresignedURLResponse,
 )
 async def create_upload_url(
-    request: CreateDocumentRequest,
+    request: CreateUploadRequest,
+    tenant_id: TenantIdDep,
     service: DocServiceDep,
-    namespace: str = "documents",
 ) -> PresignedURLResponse:
     """This route generates a presigned MinIO URL for the upload of a document.
 
@@ -44,7 +42,12 @@ async def create_upload_url(
     PresignedURLResponse
        The response containing the presigned URL and expiration time.
     """
-    return await service.create_upload_url(request, namespace=namespace)
+    return await service.create_upload_url(
+        tenant_id=tenant_id,
+        filename=request.filename,
+        content_type=request.content_type,
+        namespace=request.namespace,
+    )
 
 
 @router.get(
@@ -71,6 +74,21 @@ async def get_download_url(
     PresignedURL
       The response containing the presigned URL and expiration
     """
+    """
+    This route generates a presigned MinIO URL for the download of a document.
+
+    Attributes
+    ----------
+    document_id: uuid.UUID
+       The ID of the document to be downloaded.
+    service: DocServiceDep
+      The service instance to interact with the document service
+
+    Returns
+    -------
+    PresignedURL
+      The response containing the presigned URL and expiration
+    """
     return await service.get_download_url(document_id)
 
 
@@ -82,6 +100,23 @@ async def delete_document(
     document_id: uuid.UUID,
     service: DocServiceDep,
 ) -> None:
+    """
+    This route removes the metadata of a document from the database.
+    When the document is set to 'DELETED' status a background cleanup service is triggered
+    to also delete the file from the MinIO storage.
+
+    Attributes
+    ----------
+    document_id: uuid.UUID
+      The ID of the document to be deleted.
+    service: DocServiceDep
+     The service instance to interact with the document service
+
+    Returns
+    -------
+    None
+    """
+    await service.remove_document(document_id)
     """
     This route removes the metadata of a document from the database.
     When the document is set to 'DELETED' status a background cleanup service is triggered

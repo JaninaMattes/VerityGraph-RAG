@@ -9,7 +9,7 @@ from src.domain.ingestions.repository import IngestionJobRepository
 from src.infrastructure.database.postgres.mapper.ingestionjob import (
     IngestionJobMapper,
 )
-from src.infrastructure.database.postgres.models.ingestion import IngestionJob
+from src.infrastructure.database.postgres.models.ingestionjob import IngestionJob
 from src.shared.core.logger import get_logger
 from src.shared.exception.exceptions import (
     DatabaseInternalException,

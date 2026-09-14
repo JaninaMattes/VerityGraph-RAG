@@ -1,0 +1,217 @@
+services:
+  # =========================================================================
+  # 1. METADATA & SYSTEM STATE (PostgreSQL)
+  # =========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # POSTGRES_MULTIPLE_DATABASES: "${POSTGRES_DB},${POSTGRES_DB_METABASE}" 
+    ports:
+      - "5432:5432"
+    networks:
+      - service_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================================
+  # 2. CACHE (Redis)
+  # =========================================================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    networks:
+      - service_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================================
+  # 3. BLOB STORAGE (MinIO) - REQUIRED FOR YOUR ARCHITECTURE
+  # =========================================================================
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
+    container_name: minio
+    restart: unless-stopped
+    volumes:
+      - minio_data:/data
+    env_file:
+      - .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_DEFAULT_BUCKETS: ${MINIO_DEFAULT_BUCKETS}
+    command: [ "server", "--console-address", ":9001", "/data" ]
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web Console
+    networks:
+      - service_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auto-create buckets on startup
+  minio-init-buckets:
+    image: quay.io/minio/mc:RELEASE.2025-03-12T17-29-24Z
+    container_name: minio-init-buckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS:-files} --ignore-existing;
+      exit 0;
+      "
+    networks:
+      - service_network
+
+  # # =========================================================================
+  # # 4. MESSAGE BROKER (Redpanda - Kafka Compatible)
+  # # =========================================================================
+  # redpanda:
+  #   image: docker.redpanda.com/redpandadata/redpanda:v23.3.4
+  #   container_name: redpanda
+  #   restart: unless-stopped
+  #   command:
+  #     - redpanda
+  #     - start
+  #     - --smp 1
+  #     - --overprovisioned
+  #     - --node-id 0
+  #     - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+  #     - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+  #   ports:
+  #     - "9092:9092"      # Kafka API (for backend)
+  #     - "9644:9644"      # Redpanda Console (http://localhost:9644)
+  #   networks:
+  #     - service_network
+
+  # # =========================================================================
+  # # 5. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
+  # # =========================================================================
+  # neo4j:
+  #   image: neo4j:5.16.0-community
+  #   container_name: neo4j
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+  #     NEO4J_dbms_memory_pagecache_size: 1G
+  #     NEO4J_dbms_memory_heap_initial__size: 1G
+  #   ports:
+  #     - "7474:7474" # HTTP Browser
+  #     - "7687:7687" # Bolt Protocol
+  #   volumes:
+  #     - neo4j_data:/data
+  #   networks:
+  #     - service_network
+
+  # # =========================================================================
+  # # 6. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
+  # # =========================================================================
+  # qdrant:
+  #   image: qdrant/qdrant:v1.7.3
+  #   container_name: qdrant
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6333:6333" # REST API
+  #     - "6334:6334" # gRPC API (faster for backend)
+  #   volumes:
+  #     - qdrant_data:/qdrant/storage
+  #   networks:
+  #     - service_network
+
+  # =========================================================================
+  # 7. OBSERVABILITY & ANALYTICS
+  # =========================================================================  
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    volumes:
+      - pgadmin_working_dir:/var/lib/pgadmin
+    env_file:
+      - .env  
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: ${PGADMIN_COOKIE_PROTECTION}
+    depends_on:
+      postgres:
+        condition: service_healthy 
+    ports:
+      - "5433:80"
+    networks:
+      - service_network
+  
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy 
+    # env_file:
+    #   - .env  
+    # environment:
+    #   MB_DB_TYPE: postgres
+    #   MB_DB_HOST: postgres
+    #   MB_DB_PORT: 5432
+    #   MB_DB_DBNAME: ${POSTGRES_DB_METABASE} # Points to the SEPARATE internal DB
+    #   MB_DB_USER: ${POSTGRES_USER}
+    #   MB_DB_PASS: ${POSTGRES_PASSWORD}
+    ports:
+      - "5434:3000"
+    networks:
+      - service_network
+
+
+# =========================================================================
+# VOLUMES & NETWORKS
+# =========================================================================
+volumes:
+  postgres_data:      
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local      
+  # neo4j_data:    
+  #   driver: local
+  # qdrant_data:       
+  #   driver: local
+  pgadmin_working_dir:
+    driver: local  
+
+networks:
+  service_network:
+    driver: bridge

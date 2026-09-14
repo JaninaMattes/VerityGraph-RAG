@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database.postgres.base import Base
 
 if typing.TYPE_CHECKING:
-    from .document import Document
+    from .document import Document  # noqa: TC004
 
 
 class DocumentChunk(Base):
@@ -42,9 +42,9 @@ class DocumentChunk(Base):
     # Properties
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)  # ordering
     content: Mapped[str] = mapped_column(Text)
+    token_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     page_number: Mapped[int | None] = mapped_column(Integer)
     section_title: Mapped[str | None] = mapped_column(String(255))
-    token_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     chunk_metadata: Mapped[dict[str, typing.Any]] = mapped_column(
         JSONB,
         default=dict,
@@ -54,6 +54,21 @@ class DocumentChunk(Base):
     source_locator: Mapped[dict[str, typing.Any]] = mapped_column(
         JSONB,
         default=dict,
+    )
+
+    # Deduplication (Required for deduplication)
+    chunk_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
+
+    # Bridge to Vector DB (Required for idempotent updates/deletions)
+    qdrant_point_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, index=True, nullable=True
+    )
+
+    # Bridge to Graph DB (Required for idempotent updates/deletions)
+    neo4j_node_id: Mapped[str | None] = mapped_column(
+        String(255), index=True, nullable=True
     )
 
     # Audit information
@@ -68,25 +83,22 @@ class DocumentChunk(Base):
 
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
-        Index(
-            "ix_chunk_document_order",
-            "document_id",
-            "chunk_index",
-        ),
+        Index("ix_chunk_document_order", "document_id", "chunk_index"),
         Index("ix_chunk_page_number", "page_number"),
         Index("ix_chunk_section_title", "section_title"),
-        Index(
-            "ix_chunk_created_at",
-            "created_at",
-        ),
+        Index("ix_chunk_created_at", "created_at"),
     )
 
     def __repr__(self) -> str:
         return (
             f"Chunk("
             f"chunk_id={self.chunk_id!r}, "
+            f"document_id={self.document_id!r}, "
+            f"chunk_idx={self.chunk_index!r}, "
+            f"token_count={self.token_count!r}, "
             f"page_number={self.page_number!r}, "
             f"section_title={self.section_title!r}, "
-            f"token_count={self.token_count!r}"
+            f"qdrant_point_id={self.qdrant_point_id!r}, "
+            f"neo4j_node_id={self.neo4j_node_id!r}"
             ")"
         )

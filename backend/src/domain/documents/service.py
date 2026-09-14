@@ -16,7 +16,6 @@ from src.shared.exception.exceptions import (
     StorageException,
 )
 from src.shared.schemas.document import (
-    CreateDocumentRequest,
     DocumentStatusResponse,
     PresignedURLResponse,
 )
@@ -37,32 +36,32 @@ class DocumentService:
 
     async def create_upload_url(
         self,
-        file: CreateDocumentRequest,
+        filename: str,
+        content_type: str,
+        tenant_id: uuid.UUID,  # Injected from settings/dependency
         namespace: str = "documents",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
-        now = datetime.now(UTC)
         document_id = uuid.uuid4()
+        storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
+        
         try:
-            storage_key = StorageKey.document(
-                tenant_id=file.tenant_id,
-                document_id=document_id,
-                namespace=namespace,
-            )
-            # Persist metadata
+            # Create audit log in DB
+            now = datetime.now(UTC)
             entity = DocumentEntity(
                 document_id=document_id,
-                tenant_id=file.tenant_id,
-                filename=file.filename,
+                tenant_id=tenant_id,
+                filename=filename,
+                mime_type=content_type,
                 storage_key=storage_key,
-                status=DocumentStatus.UPLOAD_PENDING,  # upload in progress
+                status=DocumentStatus.UPLOAD_PENDING,
                 created_at=now,
                 updated_at=now,
             )
-            db_document = await self.repository.create(document=entity)
-
+            db_document = await self.repository.create(entity)
+            
             # Create presigned URL
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
@@ -86,7 +85,7 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file upload.",
             ) from exc
 
     async def get_download_url(
@@ -118,7 +117,7 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file download.",
             ) from exc
 
     async def finalize_upload(
@@ -182,5 +181,5 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to remove document metadata.",
+                "Failed to initialize file deletion.",
             ) from exc
