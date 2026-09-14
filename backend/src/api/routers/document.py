@@ -3,10 +3,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies import get_document_service
+from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
 from src.shared.core.logger import get_logger
 from src.shared.schemas.document import (
+    CreateUploadRequest,
     PresignedURLResponse,
 )
 
@@ -15,7 +16,7 @@ logger = get_logger("api.routers.document")
 router = APIRouter()
 
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
-
+TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
 @router.post(
     "/documents",
@@ -23,8 +24,9 @@ DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
     response_model=PresignedURLResponse,
 )
 async def create_upload_url(
+    request: CreateUploadRequest,
+    tenant_id: TenantIdDep,
     service: DocServiceDep,
-    namespace: str = "documents",
 ) -> PresignedURLResponse:
     """This route generates a presigned MinIO URL for the upload of a document.
 
@@ -40,7 +42,12 @@ async def create_upload_url(
     PresignedURLResponse
        The response containing the presigned URL and expiration time.
     """
-    return await service.create_upload_url(namespace=namespace)
+    return await service.create_upload_url(
+        tenant_id=tenant_id,
+        filename=request.filename,
+        content_type=request.content_type,
+        namespace=request.namespace,
+    )
 
 
 @router.get(

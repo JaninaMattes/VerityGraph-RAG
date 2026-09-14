@@ -1,12 +1,14 @@
 # src/domain/documents/service.py
 import asyncio
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from src.domain.documents.dataclasses import StorageKey
+from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.core.logger import get_logger
+from src.shared.enums.document import DocumentStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
@@ -34,18 +36,32 @@ class DocumentService:
 
     async def create_upload_url(
         self,
+        filename: str,
+        content_type: str,
+        tenant_id: uuid.UUID,  # Injected from settings/dependency
         namespace: str = "documents",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
         document_id = uuid.uuid4()
+        storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
+        
         try:
-            storage_key = StorageKey.document(
+            # Create audit log in DB
+            now = datetime.now(UTC)
+            entity = DocumentEntity(
                 document_id=document_id,
-                namespace=namespace,
+                tenant_id=tenant_id,
+                filename=filename,
+                mime_type=content_type,
+                storage_key=storage_key,
+                status=DocumentStatus.UPLOAD_PENDING,
+                created_at=now,
+                updated_at=now,
             )
-
+            db_document = await self.repository.create(entity)
+            
             # Create presigned URL
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
@@ -55,7 +71,7 @@ class DocumentService:
                 method="PUT",
             )
             return PresignedURLResponse(
-                document_id=document_id,
+                document_id=db_document.document_id,
                 url=presigned_url,
                 expires_at=expires_at,
             )
@@ -69,7 +85,7 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file upload.",
             ) from exc
 
     async def get_download_url(
@@ -101,7 +117,7 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file download.",
             ) from exc
 
     async def finalize_upload(
@@ -165,5 +181,5 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to remove document metadata.",
+                "Failed to initialize file deletion.",
             ) from exc
