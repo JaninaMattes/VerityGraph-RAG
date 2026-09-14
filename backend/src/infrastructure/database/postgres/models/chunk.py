@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database.postgres.base import Base
 
 if typing.TYPE_CHECKING:
-    from .document import Document  # noqa: TC004
+    from .document import Document
 
 
 class DocumentChunk(Base):
@@ -31,7 +31,7 @@ class DocumentChunk(Base):
         index=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
-    document_id = mapped_column(
+    document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document.document_id", ondelete="CASCADE"),
         index=True,
     )
@@ -40,16 +40,12 @@ class DocumentChunk(Base):
     document: Mapped[Document] = relationship(back_populates="document_chunks")
 
     # Properties
-    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)  # ordering
+    chunk_index: Mapped[int] = mapped_column(Integer)  # ordering
     content: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     page_number: Mapped[int | None] = mapped_column(Integer)
     section_title: Mapped[str | None] = mapped_column(String(255))
-    chunk_metadata: Mapped[dict[str, typing.Any]] = mapped_column(
-        JSONB,
-        default=dict,
-        nullable=False,
-    )
+    chunk_metadata: Mapped[dict[str, typing.Any]] = mapped_column(JSONB, default=dict)
     # Provenance
     source_locator: Mapped[dict[str, typing.Any]] = mapped_column(
         JSONB,
@@ -57,19 +53,13 @@ class DocumentChunk(Base):
     )
 
     # Deduplication (Required for deduplication)
-    chunk_hash: Mapped[str | None] = mapped_column(
-        String(64), index=True, nullable=True
-    )
+    chunk_hash: Mapped[str | None] = mapped_column(String(64))
 
     # Bridge to Vector DB (Required for idempotent updates/deletions)
-    qdrant_point_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID, index=True, nullable=True
-    )
+    qdrant_point_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
     # Bridge to Graph DB (Required for idempotent updates/deletions)
-    neo4j_node_id: Mapped[str | None] = mapped_column(
-        String(255), index=True, nullable=True
-    )
+    neo4j_node_id: Mapped[str | None] = mapped_column(String(255))
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
@@ -86,6 +76,9 @@ class DocumentChunk(Base):
         Index("ix_chunk_document_order", "document_id", "chunk_index"),
         Index("ix_chunk_page_number", "page_number"),
         Index("ix_chunk_section_title", "section_title"),
+        Index("ix_chunk_chunk_hash", "chunk_hash"),
+        Index("ix_chunk_neo4j_node_id", "neo4j_node_id"),
+        Index("ix_chunk_qdrant_point_id", "qdrant_point_id"),
         Index("ix_chunk_created_at", "created_at"),
     )
 

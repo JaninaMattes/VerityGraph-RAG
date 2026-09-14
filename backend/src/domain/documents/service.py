@@ -6,9 +6,12 @@ from datetime import UTC, datetime, timedelta
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
+from src.domain.ingestions.entities import IngestionJobEntity
+from src.domain.ingestions.repository import IngestionJobRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.core.logger import get_logger
 from src.shared.enums.document import DocumentStatus
+from src.shared.enums.ingestionjob import ProcessingStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
@@ -28,10 +31,12 @@ class DocumentService:
 
     def __init__(
         self,
-        repository: DocumentRepository,
+        doc_repository: DocumentRepository,
+        job_repository: IngestionJobRepository,
         storage: StorageProvider,
     ) -> None:
-        self.repository = repository
+        self.doc_repository = doc_repository
+        self.job_repository = job_repository
         self.storage = storage
 
     async def create_upload_url(
@@ -39,18 +44,19 @@ class DocumentService:
         filename: str,
         content_type: str,
         tenant_id: uuid.UUID,  # Injected from settings/dependency
-        namespace: str = "documents",
+        namespace: str = "files",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
         document_id = uuid.uuid4()
+        job_id = uuid.uuid4()
         storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
         
         try:
             # Create audit log in DB
             now = datetime.now(UTC)
-            entity = DocumentEntity(
+            doc_entity = DocumentEntity(
                 document_id=document_id,
                 tenant_id=tenant_id,
                 filename=filename,
@@ -60,7 +66,17 @@ class DocumentService:
                 created_at=now,
                 updated_at=now,
             )
-            db_document = await self.repository.create(entity)
+            db_document = await self.doc_repository.create(doc_entity)
+
+            # Create ingestion job in DB
+            job_entity = IngestionJobEntity(
+                job_id=job_id,
+                document_id=document_id,
+                status=ProcessingStatus.PENDING,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.job_repository.create(job_entity)
             
             # Create presigned URL
             expires_at = timedelta(minutes=30)  # 30 mins expiration
@@ -94,7 +110,7 @@ class DocumentService:
     ) -> PresignedURLResponse:
         """Create presigned GET URL to download file from S3 bucket."""
         try:
-            db_document = await self.repository.get_one(document_id=document_id)
+            db_document = await self.doc_repository.get_one(document_id=document_id)
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
@@ -126,7 +142,7 @@ class DocumentService:
     ) -> DocumentStatusResponse:
         try:
             # Fetch document metadata
-            db_document = await self.repository.get_one(document_id)
+            db_document = await self.doc_repository.get_one(document_id)
 
             # Retrieve blob storage metadata
             metadata = await asyncio.to_thread(
@@ -140,7 +156,7 @@ class DocumentService:
             db_document.mark_uploaded()
 
             # Persist document metdata
-            updated = await self.repository.update(db_document)
+            updated = await self.doc_repository.update(db_document)
             return DocumentStatusResponse(
                 document_id=updated.document_id, status=updated.status
             )
@@ -160,10 +176,10 @@ class DocumentService:
     async def remove_document(self, document_id: uuid.UUID) -> None:
         try:
             # Retrieve actual document
-            db_document = await self.repository.get_one(document_id)
+            db_document = await self.doc_repository.get_one(document_id)
 
             # Delete from database
-            await self.repository.delete(db_document)
+            await self.doc_repository.delete(db_document)
 
             # Delete from blob storage
             await asyncio.to_thread(
