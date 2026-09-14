@@ -1,4 +1,5 @@
 import base64
+import uuid
 from typing import Annotated
 
 from fastapi import Depends
@@ -46,6 +47,16 @@ def get_minio_client(settings: SettingsDep) -> Minio:
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 
+# Dependency provider testing
+DEV_TENANT_ID = uuid.UUID("15a97078-162a-44f2-b950-d0d90d684fca")
+
+
+async def get_current_tenant_id() -> uuid.UUID:
+    """
+    MVP Dependency: Returns a hardcoded tenant ID.
+    TODO: decode the JWT and extract the tenant_id from there.
+    """
+    return DEV_TENANT_ID
 
 # Dependency provider factories
 def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
