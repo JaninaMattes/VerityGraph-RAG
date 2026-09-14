@@ -11,7 +11,7 @@ class IngestionJob:
     """
 
     document_id: UUID
-    workflow_run_id: str
+    workflow_run_id: str | None
 
 
 @dataclass(slots=True, frozen=True)

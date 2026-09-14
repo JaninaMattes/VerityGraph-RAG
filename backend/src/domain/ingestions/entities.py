@@ -18,11 +18,12 @@ class IngestionJobEntity:
         job_id: UUID,
         document_id: UUID,
         workflow_id: str | None = None,
-        workflow_run_id: str,
+        workflow_run_id: str | None = None,
         current_stage: IngestionStage | None = None,
-        status: ProcessingStatus,
+        status: ProcessingStatus = ProcessingStatus.PENDING,
         attempt_count: int = 0,
         error_message: str | None = None,
+        payload: dict | None = None,
         created_at: datetime,
         updated_at: datetime,
         started_at: datetime | None = None,
@@ -39,6 +40,7 @@ class IngestionJobEntity:
         self.status = status
         self.attempt_count = attempt_count
         self.error_message = error_message
+        self.payload = payload
 
         # Audit
         self.created_at = created_at
@@ -46,7 +48,14 @@ class IngestionJobEntity:
         self.started_at = started_at
         self.finished_at = finished_at
 
-        def mark_completed(self) -> None:
-            self.status = ProcessingStatus.COMPLETED
-            self.current_stage = None
-            self.updated_at = datetime.now(UTC)
+    def mark_completed(self) -> None:
+        self.status = ProcessingStatus.COMPLETED
+        self.current_stage = None
+        self.updated_at = datetime.now(UTC)
+        self.finished_at = datetime.now(UTC)
+
+    def mark_failed(self, error: str) -> None:
+        self.status = ProcessingStatus.FAILED
+        self.error_message = error
+        self.updated_at = datetime.now(UTC)
+        self.finished_at = datetime.now(UTC)
