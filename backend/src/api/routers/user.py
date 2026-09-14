@@ -31,11 +31,13 @@ async def register(
         tenant_id=tenant_id,
     )
 
+
 @router.get(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
 )
 async def read_user(user_id: UUID, service: UserServiceDep) -> UserResponse:
     return await service.get(user_id)
+
 
 @router.patch(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
@@ -46,6 +48,7 @@ async def update_user(
     return await service.update(
         UpdateUser(user_id, username=request.username, email=request.email)
     )
+
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_user(user_id: UUID, service: UserServiceDep) -> None:

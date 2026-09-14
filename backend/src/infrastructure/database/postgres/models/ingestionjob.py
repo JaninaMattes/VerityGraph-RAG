@@ -9,7 +9,7 @@ from src.infrastructure.database.postgres.base import Base
 from src.shared.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 if typing.TYPE_CHECKING:
-    from .document import Document
+    from .document import Document  # noqa: TC004
 
 
 class IngestionJob(Base):

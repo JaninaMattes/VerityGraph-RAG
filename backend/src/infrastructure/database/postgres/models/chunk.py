@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database.postgres.base import Base
 
 if typing.TYPE_CHECKING:
-    from .document import Document
+    from .document import Document  # noqa: TC004
 
 
 class DocumentChunk(Base):
