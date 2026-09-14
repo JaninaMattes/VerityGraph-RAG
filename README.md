@@ -66,6 +66,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+    - [Example: Manually upload/download file](#example-manually-uploaddownload-file)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -194,6 +195,23 @@ Use this space to show useful examples of how a project can be used. Additional 
 
 _For more examples, please refer to the [Documentation](https://example.com)_
 
+
+#### Example: Manually upload/download file
+
+1. Upload file
+```
+curl -v \
+  -X PUT \
+  -H "Content-Type: application/pdf" \
+  --upload-file <your-file-path> \
+  <presigned-URL-from-MinIO-S3-bucket>
+```
+
+2. Download file
+``` 
+  curl -o <filename> \
+  <presigned-URL-from-MinIO-S3-bucket>
+```
 
 
 <!-- ROADMAP -->
