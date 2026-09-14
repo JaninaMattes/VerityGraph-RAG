@@ -1,8 +1,10 @@
+import uuid
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from src.api.dependencies import get_user_service
+
+from src.api.dependencies import get_current_tenant_id, get_user_service
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.service import UserService
 from src.shared.core.logger import get_logger
@@ -15,14 +17,14 @@ from src.shared.schemas.user import (
 logger = get_logger("api.routers.user")
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
-
+TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
 router = APIRouter()
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
 async def register(
-    tenant_id: UUID, user: RegisterRequest, service: UserServiceDep
+    user: RegisterRequest, tenant_id: TenantIdDep, service: UserServiceDep
 ) -> UserResponse:
     return await service.create(
         User(user.username, user.email, user.password_hash),

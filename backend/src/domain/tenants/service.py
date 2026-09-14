@@ -41,7 +41,6 @@ class TenantService:
         try:
             db_tenant = await self.repository.create(entity)
             return TenantResponse(
-                tenant_id=db_tenant.tenant_id,
                 organisation=db_tenant.organisation,
                 status=db_tenant.status,
             )
@@ -64,7 +63,6 @@ class TenantService:
                 raise TenantNotFoundException(tenant_id)
 
             return TenantResponse(
-                tenant_id=db_tenant.tenant_id,
                 organisation=db_tenant.organisation,
                 status=db_tenant.status,
             )
@@ -93,7 +91,6 @@ class TenantService:
             # Update tenant information
             updated = await self.repository.update(db_tenant)
             return TenantResponse(
-                tenant_id=updated.tenant_id,
                 organisation=updated.organisation,
                 status=db_tenant.status,
             )
