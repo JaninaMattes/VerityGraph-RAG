@@ -1,5 +1,5 @@
 from src.domain.ingestions.entities import IngestionJobEntity
-from src.infrastructure.database.postgres.models.ingestion import IngestionJob
+from src.infrastructure.database.postgres.models.ingestionjob import IngestionJob
 
 
 class IngestionJobMapper:

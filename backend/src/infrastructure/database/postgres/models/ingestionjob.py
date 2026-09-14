@@ -82,10 +82,6 @@ class IngestionJob(Base):
             "ix_job_status",
             "status",
         ),
-        Index(
-            "ix_job_status",
-            "status",
-        ),
     )
 
     def __repr__(self) -> str:
