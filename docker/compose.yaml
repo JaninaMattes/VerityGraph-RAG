@@ -53,6 +53,9 @@ services:
   minio:
     image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
     container_name: minio
+    depends_on:
+      kafka-kraft:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - minio_data:/data
@@ -92,10 +95,56 @@ services:
       "
     networks:
       - service_network
+   
+  # =========================================================================
+  # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
+  # =========================================================================
+  kafka-kraft:
+    image: confluentinc/cp-kafka:8.3.1
+    container_name: kafka-kraft
+    hostname: kafka-kraft
+    ports:
+      - "9101:9101"
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: ${KAFKA_NODE_ID}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-kraft:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka-kraft:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka-kraft:29092,CONTROLLER://kafka-kraft:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: ${CLUSTER_ID}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - service_network
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/bin/kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # # =========================================================================
-  # # 4. MESSAGE BROKER (Redpanda - Kafka Compatible)
-  # # =========================================================================
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      DYNAMIC_CONFIG_ENABLED: 'true'
+      KAFKA_CLUSTERS_0_NAME: 'local-cluster'
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka-kraft:29092'
+    depends_on:
+      kafka-kraft:
+        condition: service_healthy
+    networks:
+      - service_network
+
   # redpanda:
   #   image: docker.redpanda.com/redpandadata/redpanda:v23.3.4
   #   container_name: redpanda
@@ -113,6 +162,7 @@ services:
   #     - "9644:9644"      # Redpanda Console (http://localhost:9644)
   #   networks:
   #     - service_network
+
 
   # # =========================================================================
   # # 5. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
@@ -204,7 +254,9 @@ volumes:
   redis_data:
     driver: local
   minio_data:
-    driver: local      
+    driver: local
+  kafka_data: # for logs
+   driver: local
   # neo4j_data:    
   #   driver: local
   # qdrant_data:       
