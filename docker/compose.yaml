@@ -64,10 +64,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_DEFAULT_BUCKETS: ${MINIO_DEFAULT_BUCKETS} 
+      MINIO_DEFAULT_BUCKETS: ${MINIO_DEFAULT_BUCKETS}
+      MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
+      MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
+      MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}
       MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
-      MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: 'kafka-kraft:29092'
-      MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY:  'minio-notifications'
+      MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: ${MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY} # single primary broker for dev environment
+      MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}
     command: [ "server", "--console-address", ":9001", "/data" ]
     ports:
       - "9000:9000"  # S3 API
@@ -93,14 +96,28 @@ services:
       - .env
     entrypoint: >
       /bin/sh -c "
+      echo 'Waiting for MinIO and Kafka to be ready...';
       sleep 5;
+      
+      echo 'Setting MinIO alias...';
       /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      
+      echo 'Creating default bucket...';
       /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS:-files} --ignore-existing;
+      
+      echo 'Binding Kafka events to bucket...';
+      # FIXED: Removed 'post' as it is an invalid mc event flag. 'put' covers ObjectCreated:Post automatically.
+      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS:-files} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+      echo 'MinIO Kafka integration configured successfully';
+      
+      echo 'Verifying bucket event configuration:';
+      /usr/bin/mc event list dockerminio/${MINIO_DEFAULT_BUCKETS:-files};
+      
       exit 0;
       "
     networks:
       - service_network
-   
+
   # =========================================================================
   # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
@@ -136,6 +153,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # Auto-create topics on startup
+  kafka-init-topics:
+    image: confluentinc/cp-kafka:8.3.1
+    container_name: kafka-init-topics
+    depends_on:
+      kafka-kraft:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO and Kafka to be ready...';
+      sleep 5;
+
+      echo 'Creating topic: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}';
+      kafka-topics --bootstrap-server kafka-kraft:29092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 3 --replication-factor 1;
+      echo 'Kafka topics initialized successfully';
+      "
+    networks:
+      - service_network
 
   kafka-ui:
     image: kafbat/kafka-ui:latest
