@@ -83,7 +83,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Auto-create buckets on startup
+  # Auto-create buckets and attach Kafka notifications on startup
   minio-init-buckets:
     image: quay.io/minio/mc:RELEASE.2025-03-12T17-29-24Z
     container_name: minio-init-buckets
@@ -96,18 +96,14 @@ services:
       - .env
     entrypoint: >
       /bin/sh -c "
-      echo 'Waiting for MinIO and Kafka to be ready...';
-      sleep 5;
-      
       echo 'Setting MinIO alias...';
-      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc alias set dockerminio ${MINIO_URL} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       
       echo 'Creating default bucket...';
       /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS:-files} --ignore-existing;
       
       echo 'Binding Kafka events to bucket...';
-      # FIXED: Removed 'post' as it is an invalid mc event flag. 'put' covers ObjectCreated:Post automatically.
-      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS:-files} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS:-files} arn:minio:sqs::primary --event put,delete;
       echo 'MinIO Kafka integration configured successfully';
       
       echo 'Verifying bucket event configuration:';
@@ -118,6 +114,7 @@ services:
     networks:
       - service_network
 
+
   # =========================================================================
   # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
@@ -125,30 +122,32 @@ services:
     image: confluentinc/cp-kafka:8.3.1
     container_name: kafka-kraft
     hostname: kafka-kraft
-    ports:
-      - "9101:9101"
-      - "9092:9092"
+    env_file:
+      - .env
     environment:
       KAFKA_NODE_ID: ${KAFKA_NODE_ID}
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-kraft:29092,PLAINTEXT_HOST://localhost:9092'
-      KAFKA_JMX_PORT: 9101
-      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_BROKER_ID: ${KAFKA_BROKER_ID}
       KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: ${KAFKA_AUTO_CREATE_TOPICS_ENABLE}
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}
-      KAFKA_NUM_PARTITIONS: ${KAFKA_NUM_PARTITIONS}
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka-kraft:29093'
-      KAFKA_LISTENERS: 'PLAINTEXT://kafka-kraft:29092,CONTROLLER://kafka-kraft:29093,PLAINTEXT_HOST://0.0.0.0:9092'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka-kraft:9093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-kraft:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
       CLUSTER_ID: ${CLUSTER_ID}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}   # Set to 1 for a single-node cluster
+      KAFKA_DEFAULT_REPLICATION_FACTOR: ${KAFKA_DEFAULT_REPLICATION_FACTOR}               # Set to 1 for a single-node cluster
+      KAFKA_MIN_INSYNC_REPLICAS: ${KAFKA_MIN_INSYNC_REPLICAS}                             # Set to 1 for a single-node cluster
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: ${KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS}
+    ports:
+      - "9092:9092"
+      - "9093:9093"
     volumes:
       - kafka_data:/var/lib/kafka/data
     networks:
       - service_network
     healthcheck:
-      test: ["CMD-SHELL", "/usr/bin/kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -161,15 +160,13 @@ services:
     depends_on:
       kafka-kraft:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      echo 'Waiting for MinIO and Kafka to be ready...';
-      sleep 5;
-
-      echo 'Creating topic: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}';
-      kafka-topics --bootstrap-server kafka-kraft:29092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 3 --replication-factor 1;
-      echo 'Kafka topics initialized successfully';
-      "
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      "echo 'Waiting for Kafka to be fully ready...' &&
+      sleep 5 &&
+      echo 'Creating topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}' &&
+      kafka-topics --bootstrap-server kafka-kraft:9092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 1 --replication-factor 1 &&
+      echo 'Kafka topics initialized successfully.'"
     networks:
       - service_network
 
@@ -181,7 +178,7 @@ services:
     environment:
       DYNAMIC_CONFIG_ENABLED: ${DYNAMIC_CONFIG_ENABLED}
       KAFKA_CLUSTERS_0_NAME: ${KAFKA_CLUSTERS_0_NAME}
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka-kraft:29092'
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka-kraft:9092'
     depends_on:
       kafka-kraft:
         condition: service_healthy
