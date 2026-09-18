@@ -32,11 +32,9 @@ class DocumentService:
     def __init__(
         self,
         doc_repository: DocumentRepository,
-        job_repository: IngestionJobRepository,
         storage: StorageProvider,
     ) -> None:
         self.doc_repository = doc_repository
-        self.job_repository = job_repository
         self.storage = storage
 
     async def create_upload_url(
@@ -50,11 +48,11 @@ class DocumentService:
 
         # Create storage key
         document_id = uuid.uuid4()
-        job_id = uuid.uuid4()
         storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
-        
+        expires_at = timedelta(minutes=30)  # 30 mins expiration
+
         try:
-            # Create audit log in DB
+            # Transaction boundary: Atomic commit to Postgres
             now = datetime.now(UTC)
             doc_entity = DocumentEntity(
                 document_id=document_id,
@@ -68,18 +66,7 @@ class DocumentService:
             )
             db_document = await self.doc_repository.create(doc_entity)
 
-            # Create ingestion job in DB
-            job_entity = IngestionJobEntity(
-                job_id=job_id,
-                document_id=document_id,
-                status=ProcessingStatus.PENDING,
-                created_at=now,
-                updated_at=now,
-            )
-            await self.job_repository.create(job_entity)
-            
             # Create presigned URL
-            expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
                 storage_key=storage_key,
@@ -96,8 +83,8 @@ class DocumentService:
         except StorageException:
             raise
         except Exception as exc:
-            logger.warning(
-                "Unexpected error occured when generating presigned PUT URL for document %s.",
+            logger.exception(
+                "System failure when generating upload signatures for document %s.",
                 document_id,
             )
             raise DocumentServiceException(
