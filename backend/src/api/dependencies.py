@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import uuid
 from typing import Annotated
@@ -6,6 +7,7 @@ from fastapi import Depends
 from minio import Minio
 from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.client import Client
 
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
@@ -29,6 +31,8 @@ from src.shared.core.logger import get_logger
 
 logger = get_logger("api.dependencies")
 
+_temporal_client: Client | None = None  # Singleton to avoid reconnecting
+_temporal_lock = asyncio.Lock()
 
 # Reuse settings dependency across sub-providers
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -38,16 +42,26 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key.get_secret_value(),
-        secret_key=settings.minio_secret_key.get_secret_value(),
+        endpoint=settings.minio_url,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
         region=settings.minio_region,
         secure=settings.minio_secure,
     )
 
+async def get_temporalio_client(settings: SettingsDep) -> Client:
+    # Thread safe lazy loading
+    global _temporal_client
+    if _temporal_client is None:
+        async with _temporal_lock:
+            logger.info("Creating new Temporalio client instance.")
+            _temporal_client = await Client.connect(settings.temporal_url)
+    return _temporal_client
+
 
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
+TemporalioClientDep = Annotated[Client, Depends(get_temporalio_client)]
 
 # Dependency provider testing
 DEV_TENANT_ID = uuid.UUID("15a97078-162a-44f2-b950-d0d90d684fca")
