@@ -91,14 +91,9 @@ def get_document_service(
     doc_repository: Annotated[
         PostgresDocumentRepository, Depends(get_document_repository)
     ],
-    job_repository: Annotated[
-        PostgresIngestionJobRepository, Depends(get_job_repository)
-    ],
     storage: Annotated[MinioStorage, Depends(get_minio_provider)],
 ) -> DocumentService:
-    return DocumentService(
-        doc_repository=doc_repository, job_repository=job_repository, storage=storage
-    )
+    return DocumentService(doc_repository=doc_repository, storage=storage)
 
 
 def get_tenant_service(

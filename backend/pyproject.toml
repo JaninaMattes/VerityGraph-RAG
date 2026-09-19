@@ -25,6 +25,8 @@ dependencies = [
     "transformers>=5.13.1",
     "asyncpg>=0.31.0",
     "gunicorn>=26.2.0",
+    "uvicorn>=0.52.4",
+    "aiokafka>=0.14.0",
 ]
 
 [tool.fastapi]
