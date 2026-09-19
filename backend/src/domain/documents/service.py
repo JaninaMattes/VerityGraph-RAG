@@ -66,6 +66,16 @@ class DocumentService:
             )
             db_document = await self.doc_repository.create(doc_entity)
 
+            # Create ingestion job in DB
+            job_entity = IngestionJobEntity(
+                job_id=job_id,
+                document_id=document_id,
+                status=ProcessingStatus.PENDING,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.job_repository.create(job_entity)
+            
             # Create presigned URL
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
