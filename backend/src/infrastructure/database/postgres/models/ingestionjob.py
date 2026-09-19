@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
@@ -21,7 +22,7 @@ class IngestionJob(Base):
         index=True,
         # server_default=text("gen_random_uuid()"),  # server-side responsiblity
     )
-    document_id = mapped_column(
+    document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document.document_id", ondelete="CASCADE"),
         index=True,
     )
@@ -31,7 +32,7 @@ class IngestionJob(Base):
 
     # Properties
     workflow_id: Mapped[str | None] = mapped_column(String(255))
-    workflow_run_id: Mapped[str] = mapped_column(String(255), unique=True)
+    workflow_run_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     current_stage: Mapped[IngestionStage | None] = mapped_column(
         Enum(
             IngestionStage,
@@ -39,7 +40,6 @@ class IngestionJob(Base):
             native_enum=True,
         )
     )
-
     status: Mapped[ProcessingStatus] = mapped_column(
         Enum(
             ProcessingStatus,
@@ -52,6 +52,9 @@ class IngestionJob(Base):
         BigInteger, default=0, server_default="0"
     )
     error_message: Mapped[str | None] = mapped_column(Text)
+    payload: Mapped[dict[str, typing.Any] | None] = mapped_column(
+        JSONB, default=None
+    )  # For state/error tracking
 
     # Audit information
     created_at: Mapped[datetime] = mapped_column(
@@ -67,6 +70,10 @@ class IngestionJob(Base):
 
     __table_args__ = (
         Index(
+            "ix_job_workflow_id",
+            "workflow_id",
+        ),
+        Index(
             "ix_job_workflow_run_id",
             "workflow_run_id",
         ),
@@ -77,10 +84,6 @@ class IngestionJob(Base):
         Index(
             "ix_job_stage",
             "current_stage",
-        ),
-        Index(
-            "ix_job_status",
-            "status",
         ),
         Index(
             "ix_job_status",

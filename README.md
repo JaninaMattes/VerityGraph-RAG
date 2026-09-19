@@ -31,13 +31,11 @@
 <p align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
     <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
-    <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
   </a>
 
   <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
 
   <p align="center">
-    An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
     <br />
     <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
@@ -66,6 +64,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+    - [Example: Manually upload/download file](#example-manually-uploaddownload-file)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -194,6 +193,23 @@ Use this space to show useful examples of how a project can be used. Additional 
 
 _For more examples, please refer to the [Documentation](https://example.com)_
 
+
+#### Example: Manually upload/download file
+
+1. Upload file
+```
+curl -v \
+  -X PUT \
+  -H "Content-Type: application/pdf" \
+  --upload-file <your-file-path> \
+  <presigned-URL-from-MinIO-S3-bucket>
+```
+
+2. Download file
+``` 
+  curl -o <filename> \
+  <presigned-URL-from-MinIO-S3-bucket>
+```
 
 
 <!-- ROADMAP -->

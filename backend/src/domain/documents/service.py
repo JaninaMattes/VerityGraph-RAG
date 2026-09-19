@@ -6,9 +6,12 @@ from datetime import UTC, datetime, timedelta
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
+from src.domain.ingestions.entities import IngestionJobEntity
+from src.domain.ingestions.repository import IngestionJobRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.core.logger import get_logger
 from src.shared.enums.document import DocumentStatus
+from src.shared.enums.ingestionjob import ProcessingStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
@@ -16,7 +19,6 @@ from src.shared.exception.exceptions import (
     StorageException,
 )
 from src.shared.schemas.document import (
-    CreateDocumentRequest,
     DocumentStatusResponse,
     PresignedURLResponse,
 )
@@ -29,42 +31,52 @@ class DocumentService:
 
     def __init__(
         self,
-        repository: DocumentRepository,
+        doc_repository: DocumentRepository,
         storage: StorageProvider,
     ) -> None:
-        self.repository = repository
+        self.doc_repository = doc_repository
         self.storage = storage
 
     async def create_upload_url(
         self,
-        file: CreateDocumentRequest,
-        namespace: str = "documents",
+        filename: str,
+        content_type: str,
+        tenant_id: uuid.UUID,  # Injected from settings/dependency
+        namespace: str = "files",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
-        now = datetime.now(UTC)
         document_id = uuid.uuid4()
+        storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
+        expires_at = timedelta(minutes=30)  # 30 mins expiration
+
         try:
-            storage_key = StorageKey.document(
-                tenant_id=file.tenant_id,
+            # Transaction boundary: Atomic commit to Postgres
+            now = datetime.now(UTC)
+            doc_entity = DocumentEntity(
                 document_id=document_id,
-                namespace=namespace,
-            )
-            # Persist metadata
-            entity = DocumentEntity(
-                document_id=document_id,
-                tenant_id=file.tenant_id,
-                filename=file.filename,
+                tenant_id=tenant_id,
+                filename=filename,
+                mime_type=content_type,
                 storage_key=storage_key,
-                status=DocumentStatus.UPLOAD_PENDING,  # upload in progress
+                status=DocumentStatus.UPLOAD_PENDING,
                 created_at=now,
                 updated_at=now,
             )
-            db_document = await self.repository.create(document=entity)
+            db_document = await self.doc_repository.create(doc_entity)
 
+            # Create ingestion job in DB
+            job_entity = IngestionJobEntity(
+                job_id=job_id,
+                document_id=document_id,
+                status=ProcessingStatus.PENDING,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.job_repository.create(job_entity)
+            
             # Create presigned URL
-            expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
                 storage_key=storage_key,
@@ -81,12 +93,12 @@ class DocumentService:
         except StorageException:
             raise
         except Exception as exc:
-            logger.warning(
-                "Unexpected error occured when generating presigned PUT URL for document %s.",
+            logger.exception(
+                "System failure when generating upload signatures for document %s.",
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file upload.",
             ) from exc
 
     async def get_download_url(
@@ -95,7 +107,7 @@ class DocumentService:
     ) -> PresignedURLResponse:
         """Create presigned GET URL to download file from S3 bucket."""
         try:
-            db_document = await self.repository.get_one(document_id=document_id)
+            db_document = await self.doc_repository.get_one(document_id=document_id)
             expires_at = timedelta(minutes=30)  # 30 mins expiration
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
@@ -118,7 +130,7 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to create presigned upload URL.",
+                "Failed to initialize file download.",
             ) from exc
 
     async def finalize_upload(
@@ -127,7 +139,7 @@ class DocumentService:
     ) -> DocumentStatusResponse:
         try:
             # Fetch document metadata
-            db_document = await self.repository.get_one(document_id)
+            db_document = await self.doc_repository.get_one(document_id)
 
             # Retrieve blob storage metadata
             metadata = await asyncio.to_thread(
@@ -141,7 +153,7 @@ class DocumentService:
             db_document.mark_uploaded()
 
             # Persist document metdata
-            updated = await self.repository.update(db_document)
+            updated = await self.doc_repository.update(db_document)
             return DocumentStatusResponse(
                 document_id=updated.document_id, status=updated.status
             )
@@ -161,10 +173,10 @@ class DocumentService:
     async def remove_document(self, document_id: uuid.UUID) -> None:
         try:
             # Retrieve actual document
-            db_document = await self.repository.get_one(document_id)
+            db_document = await self.doc_repository.get_one(document_id)
 
             # Delete from database
-            await self.repository.delete(db_document)
+            await self.doc_repository.delete(db_document)
 
             # Delete from blob storage
             await asyncio.to_thread(
@@ -182,5 +194,5 @@ class DocumentService:
                 document_id,
             )
             raise DocumentServiceException(
-                "Failed to remove document metadata.",
+                "Failed to initialize file deletion.",
             ) from exc

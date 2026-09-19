@@ -12,6 +12,7 @@ class IngestionStage(StrEnum):
 
 class ProcessingStatus(StrEnum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "complete"
     FAILED = "failed"

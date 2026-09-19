@@ -1,9 +1,9 @@
+import uuid
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies import get_tenant_service
+from src.api.dependencies import get_current_tenant_id, get_tenant_service
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.service import TenantService
 from src.shared.core.logger import get_logger
@@ -16,6 +16,7 @@ from src.shared.schemas.tenant import (
 logger = get_logger("api.routers.tenant")
 
 TenantServiceDep = Annotated[TenantService, Depends(get_tenant_service)]
+TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
 router = APIRouter()
 
@@ -42,6 +43,19 @@ async def create_tenant(
     TenantResponse
         The response containing the created tenant.
     """
+    """This endpoint creates a new tenant.
+
+    Attributes
+    ----------
+    request: CreateTenantRequest
+        The request body containing the organisation name.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse
+        The response containing the created tenant.
+    """
     return await service.create(Tenant(request.organisation))
 
 
@@ -51,9 +65,22 @@ async def create_tenant(
     response_model=TenantResponse,
 )
 async def read_tenant(
-    tenant_id: UUID,
+    tenant_id: TenantIdDep,
     service: TenantServiceDep,
 ) -> TenantResponse:
+    """This endpoint retrieves a tenant by its ID.
+
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be retrieved.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse
+        The response containing the retrieved tenant.
+    """
     """This endpoint retrieves a tenant by its ID.
 
     Attributes
@@ -76,10 +103,25 @@ async def read_tenant(
     response_model=TenantResponse,
 )
 async def update_tenant(
-    tenant_id: UUID,
+    tenant_id: TenantIdDep,
     request: UpdateTenantRequest,
     service: TenantServiceDep,
 ) -> TenantResponse:
+    """This endpoint updates a tenant's information.
+
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be updated.
+    request: UpdateTenantRequest
+      The request body containing the updated tenant information.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    TenantResponse: The response containing the updated tenant.
+
+    """
     """This endpoint updates a tenant's information.
 
     Attributes
@@ -105,9 +147,20 @@ async def update_tenant(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def revoke_tenant(
-    tenant_id: UUID,
+    tenant_id: TenantIdDep,
     service: TenantServiceDep,
 ) -> None:
+    """This endpoint revokes a tenant's access.
+    Attributes
+    ----------
+    tenant_id: UUID
+       The ID of the tenant to be revoked.
+    service: TenantServiceDep
+
+    Returns
+    -------
+    None: The response indicating the successful deletion of the tenant.
+    """
     """This endpoint revokes a tenant's access.
     Attributes
     ----------

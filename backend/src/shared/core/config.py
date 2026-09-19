@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
 
     minio_endpoint: str
-    minio_root_user: SecretStr
-    minio_root_password: SecretStr
+    minio_access_key: SecretStr
+    minio_secret_key: SecretStr
     minio_default_bucket: str = "files"
     minio_region: str = "us-east-1"
     minio_secure: bool = True

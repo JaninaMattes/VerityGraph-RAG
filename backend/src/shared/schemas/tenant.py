@@ -1,4 +1,3 @@
-from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -16,6 +15,5 @@ class CreateTenantRequest(BaseModel):
 
 
 class TenantResponse(BaseModel):
-    tenant_id: UUID
     organisation: str
     status: TenantStatus

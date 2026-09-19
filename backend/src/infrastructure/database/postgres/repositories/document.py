@@ -26,7 +26,6 @@ class PostgresDocumentRepository(DocumentRepository):
         self.session = session
 
     async def create(self, document: DocumentEntity) -> DocumentEntity:
-
         db_document = DocumentMapper.to_model(document)
 
         # Add new object to session
