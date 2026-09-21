@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Graph RAG Backend"
     environment: Literal["development", "testing", "production"] = "development"
+    log_level: str = "INFO"
     debug: bool = False
     api_prefix: str = "/api/v1"
 
@@ -29,6 +30,12 @@ class Settings(BaseSettings):
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     reset_token_expire_minutes: int = Field(default=60, gt=0)
+
+    # ---------------------------------------------------------
+    # Cache (e.g. Redis)
+    # ---------------------------------------------------------
+    redis_url: RedisDsn
+    redis_password: SecretStr
 
     # ---------------------------------------------------------
     # Database (e.g. PostgreSQL)
@@ -41,30 +48,36 @@ class Settings(BaseSettings):
     # Blob Storagee (e.g. MinIO S3)
     # ---------------------------------------------------------
 
-    minio_endpoint: str
-    minio_access_key: SecretStr
-    minio_secret_key: SecretStr
+    minio_url: str  # local dev
+    minio_root_user: SecretStr
+    minio_root_password: SecretStr
     minio_default_bucket: str = "files"
     minio_region: str = "us-east-1"
-    minio_secure: bool = True
+    minio_secure: bool = False
     minio_sse_customer_key: SecretStr
 
     # ---------------------------------------------------------
-    # Cache (e.g. Redis)
+    # Message Broker (e.g. Kafka KRaft)
     # ---------------------------------------------------------
-    cache_url: RedisDsn
+
+    kafka_topics: str = "minio-events"
+    kafka_bootstrap_servers: str
+    kafka_group_id: str = "minio-ingestion-group"
+    kafka_auto_offset_reset: str = "earliest"
+    kafka_enable_auto_commit: bool = False  # manually commit
 
     # ---------------------------------------------------------
     # Temporal
     # ---------------------------------------------------------
 
-    temporal_endpoint: str
+    temporal_url: str
     temporal_namespace: str = "default"
     temporal_task_queue: str
 
     # ---------------------------------------------------------
     # Frontend
     # ---------------------------------------------------------
+
     frontend_url: HttpUrl
 
 
