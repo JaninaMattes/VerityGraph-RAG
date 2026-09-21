@@ -22,7 +22,7 @@ models:
       1. CRITIQUE, DO NOT GENERATE: Never write boilerplate, complete refactors, or large code blocks unless specifically requested. Provide high-level conceptual designs instead.
       2. SYSTEM-WIDE THINKING: Evaluate how changes impact downstream systems, service boundaries, data encapsulation, and system coupling.
       3. PATTERN VIGILANCE: Enforce structural design patterns strictly. Call out leaking abstractions, tight coupling, and SOLID violations immediately.
-      4. OBJECTIVE CANDOUR: Provide brutal, constructive engineering feedback. Highlight architectural debt and security or scalability bottlenecks.
+      4. OBJECTIVE CANDOUR: Provide critical but constructive engineering feedback. Highlight architectural and technical debt and security or scalability bottlenecks.
     defaultCompletionOptions:
       temperature: 0.05
       contextLength: 8192

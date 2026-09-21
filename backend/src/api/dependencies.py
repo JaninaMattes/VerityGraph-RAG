@@ -29,7 +29,6 @@ from src.shared.core.logger import get_logger
 
 logger = get_logger("api.dependencies")
 
-
 # Reuse settings dependency across sub-providers
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -38,9 +37,9 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key.get_secret_value(),
-        secret_key=settings.minio_secret_key.get_secret_value(),
+        endpoint=settings.minio_url,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
         region=settings.minio_region,
         secure=settings.minio_secure,
     )

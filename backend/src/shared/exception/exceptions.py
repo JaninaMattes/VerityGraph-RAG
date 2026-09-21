@@ -218,6 +218,65 @@ class AccessDeniedException(StorageException):
 
         self.bucket_name = bucket_name
 
+# ============================================================
+# Event Manager Exceptions
+# ============================================================
+class EventHandlerException(ApplicationException):
+    """
+    Base exception for event handler failures.
+    """
+
+
+class EventHandlerProcessingException(ApplicationException):
+    def __init__(
+        self,
+        event_type: str,
+    ):
+        super().__init__(
+            f"Error triggered when processing MinIO 'ObjectCreated' events of type {event_type}."
+        )
+
+        self.event_type = event_type
+
+
+class AIOKafkaConsumerException(EventHandlerException):
+    """
+    Base exception for async Kafka consumer failures.
+    """
+
+
+class AIOKafkaConsumerAuthException(AIOKafkaConsumerException):
+    def __init__(
+        self,
+        topics: set[str],
+    ):
+        super().__init__(
+            f"Access to Kafka topics '{topics}' refused due to missing permissions or bad credentials."
+        )
+
+        self.topics = topics
+
+
+class AIOKafkaConsumerOffsetException(AIOKafkaConsumerException):
+    def __init__(
+        self, message: str = "The 'auto_offset_reset' policy has not been set"
+    ):
+        super().__init__(message)
+
+
+class AIOKafkaConsumerRecordTooLargeException(AIOKafkaConsumerException):
+    def __init__(
+        self, message: str = "The message exceeds 'max_partition_fetch_bytes'."
+    ):
+        super().__init__(message)
+
+
+class AIOKafkaConsumerInvalidMessageException(AIOKafkaConsumerException):
+    def __init__(
+        self,
+        message: str = "The CRC check on the message failed due to connection failure or code bug.",
+    ):
+        super().__init__(message)
 
 # ============================================================
 # Service Layer Exceptions

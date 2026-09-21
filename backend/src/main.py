@@ -7,23 +7,26 @@ from src.shared.core.config import get_settings
 from src.shared.core.logger import get_logger, setup_logging
 from src.shared.exception.exception_handlers import register_exception_handlers
 
+settings = get_settings()
+
 # Initialization before FastAPI constructed
-setup_logging(log_level="INFO")
+setup_logging(log_level=settings.log_level)
 logger = get_logger("api.main")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     try:
         # Startup
+        logger.info("Starting up FastAPI...")
         yield
     except Exception:
         logger.exception("App engine generation failure!")
         raise
     finally:
         # Shutdown
+        logger.info("Shutting down FastAPI...")
         await async_engine.dispose()
 
-settings = get_settings()
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 # Exception handling
