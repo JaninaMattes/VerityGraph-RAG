@@ -7,24 +7,26 @@ services:
     container_name: postgres
     restart: unless-stopped
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+      # Mount the initialise multiple-databases script
+      - ./scripts/init-multiple-db.sh:/docker-entrypoint-initdb.d/init-multiple-db.sh:ro
     env_file:
       - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # POSTGRES_MULTIPLE_DATABASES: "${POSTGRES_DB},${POSTGRES_DB_METABASE}" 
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
     ports:
       - "5432:5432"
     networks:
-      - service_network
+      - service-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 20s
 
   # =========================================================================
   # 2. CACHE (Redis)
@@ -34,14 +36,16 @@ services:
     container_name: redis
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - redis-data:/data
+    env_file:
+      - .env
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     networks:
-      - service_network
+      - service-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,7 +62,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
-      - minio_data:/data
+      - minio-data:/data
     env_file:
       - .env
     environment:
@@ -75,12 +79,13 @@ services:
       - "9000:9000"  # S3 API
       - "9001:9001"  # Web Console
     networks:
-      - service_network
+      - service-network
     healthcheck:
       test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/localhost/9000"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   # Auto-create buckets and attach Kafka notifications on startup
   minio-init-buckets:
@@ -100,8 +105,7 @@ services:
       exit 0;
       "
     networks:
-      - service_network
-
+      - service-network
 
   # =========================================================================
   # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
@@ -110,6 +114,7 @@ services:
     image: confluentinc/cp-kafka:8.3.1
     container_name: kafka-kraft
     hostname: kafka-kraft
+    restart: unless-stopped
     env_file:
       - .env
     environment:
@@ -130,9 +135,9 @@ services:
       - "9092:9092"
       - "9093:9093"
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - kafka-data:/var/lib/kafka/data
     networks:
-      - service_network
+      - service-network
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
@@ -144,6 +149,9 @@ services:
   kafka-init-topics:
     image: confluentinc/cp-kafka:8.3.1
     container_name: kafka-init-topics
+    restart: "no" # Run once and exit
+    env_file:
+      - .env
     depends_on:
       kafka-kraft:
         condition: service_healthy
@@ -153,13 +161,16 @@ services:
       exit 0;
       "
     networks:
-      - service_network
+      - service-network
 
   kafka-ui:
     image: ghcr.io/kafbat/kafka-ui:latest
     container_name: kafka-ui
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       DYNAMIC_CONFIG_ENABLED: ${DYNAMIC_CONFIG_ENABLED}
       KAFKA_CLUSTERS_0_NAME: ${KAFKA_CLUSTERS_0_NAME}
@@ -168,62 +179,123 @@ services:
       kafka-kraft:
         condition: service_healthy
     networks:
-      - service_network
+      - service-network
 
-  # redpanda:
-  #   image: docker.redpanda.com/redpandadata/redpanda:v23.3.4
-  #   container_name: redpanda
-  #   restart: unless-stopped
-  #   command:
-  #     - redpanda
-  #     - start
-  #     - --smp 1
-  #     - --overprovisioned
-  #     - --node-id 0
-  #     - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
-  #     - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
-  #   ports:
-  #     - "9092:9092"      # Kafka API (for backend)
-  #     - "9644:9644"      # Redpanda Console (http://localhost:9644)
-  #   networks:
-  #     - service_network
+  # =========================================================================
+  # 5. STATELESS ORCHESTRATION (TEMPORAL.io)
+  # =========================================================================
+  temporal:
+    image: temporalio/server:1.32.0
+    container_name: temporal
+    restart: unless-stopped
+    ports:
+      - "7233:7233"  # gRPC port for Client.connect()
+    env_file:
+      - .env
+    environment:
+      # PostgreSQL persistence (required - Temporal doesn't use Kafka for state)
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_SEEDS=${POSTGRES_SEEDS}
+      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER}
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${TEMPORAL_POSTGRES_DB}
 
+      # Visibility Database Credentials
+      - POSTGRES_VISIBILITY_USER=${TEMPORAL_POSTGRES_USER}
+      - POSTGRES_VISIBILITY_PWD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_VISIBILITY_DB=${TEMPORAL_POSTGRES_VISIBILITY_DB}
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - SKIP_SCHEMA_SETUP=${SKIP_SCHEMA_SETUP} # Set to 'true'; Schema is initialised in the Temporal server container
+    volumes:
+      - temporal-data:/etc/temporal/config/dynamicconfig
+    depends_on:
+      temporal-schema-setup:
+        condition: service_completed_successfully
+    networks:
+      - service-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+
+  temporal-schema-setup:
+    image: temporalio/admin-tools:1.32.0
+    container_name: temporal-schema-setup
+    env_file:
+      - .env
+    environment:
+      - DB_PORT=5432
+      - POSTGRES_SEEDS=${POSTGRES_SEEDS}
+      - TEMPORAL_USER=${TEMPORAL_POSTGRES_USER}
+      - TEMPORAL_PASSWORD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${TEMPORAL_POSTGRES_DB}
+      - POSTGRES_VISIBILITY_DB=${TEMPORAL_POSTGRES_VISIBILITY_DB}
+    volumes:
+      - ./scripts/setup-temporal-postgres.sh:/scripts/setup-temporal-postgres.sh:ro
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-temporal-postgres.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - service-network
+
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: temporal-ui
+    restart: unless-stopped
+    ports:
+      - "8081:8080"  # Web UI for workflow monitoring
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_URL}
+      - TEMPORAL_CORS_ORIGINS=${TEMPORAL_CORS_ORIGIN} # React frontend, FastAPI backend
+    depends_on:
+      - temporal
+    networks:
+      - service-network
 
   # # =========================================================================
   # # 5. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
   # # =========================================================================
   # neo4j:
-  #   image: neo4j:5.16.0-community
+  #   image: neo4j:5.24-community
   #   container_name: neo4j
   #   restart: unless-stopped
-  #   env_file:
-  #     - .env
   #   environment:
   #     NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
-  #     NEO4J_dbms_memory_pagecache_size: 1G
+  #     NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
   #     NEO4J_dbms_memory_heap_initial__size: 1G
+  #     NEO4J_dbms_memory_heap_max__size: 2G
+  #     NEO4J_dbms_memory_pagecache_size: 1G
   #   ports:
-  #     - "7474:7474" # HTTP Browser
-  #     - "7687:7687" # Bolt Protocol
+  #     - "7474:7474"
+  #     - "7687:7687"
   #   volumes:
-  #     - neo4j_data:/data
+  #     - neo4j-data:/data
   #   networks:
-  #     - service_network
+  #     - service-network
 
   # # =========================================================================
   # # 6. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
   # # =========================================================================
   # qdrant:
-  #   image: qdrant/qdrant:v1.7.3
+  #   image: qdrant/qdrant:v1.12.4
   #   container_name: qdrant
   #   restart: unless-stopped
+  #   environment:
+  #     QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-dev_api_key} # Enforce auth habits
   #   ports:
-  #     - "6333:6333" # REST API
-  #     - "6334:6334" # gRPC API (faster for backend)
+  #     - "6333:6333"
+  #     - "6334:6334"
   #   volumes:
-  #     - qdrant_data:/qdrant/storage
+  #     - qdrant-data:/qdrant/storage
   #   networks:
-  #     - service_network
+  #     - service-network
 
   # =========================================================================
   # 7. OBSERVABILITY & ANALYTICS
@@ -233,7 +305,7 @@ services:
     container_name: pgadmin
     restart: unless-stopped
     volumes:
-      - pgadmin_working_dir:/var/lib/pgadmin
+      - pgadmin-working-dir:/var/lib/pgadmin
     env_file:
       - .env  
     environment:
@@ -246,49 +318,52 @@ services:
     ports:
       - "5433:80"
     networks:
-      - service_network
+      - service-network
   
-  metabase:
-    image: metabase/metabase:latest
-    container_name: metabase
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy 
-    # env_file:
-    #   - .env  
-    # environment:
-    #   MB_DB_TYPE: postgres
-    #   MB_DB_HOST: postgres
-    #   MB_DB_PORT: 5432
-    #   MB_DB_DBNAME: ${POSTGRES_DB_METABASE} # Points to the SEPARATE internal DB
-    #   MB_DB_USER: ${POSTGRES_USER}
-    #   MB_DB_PASS: ${POSTGRES_PASSWORD}
-    ports:
-      - "5434:3000"
-    networks:
-      - service_network
+  # metabase:
+  #   image: metabase/metabase:latest
+  #   container_name: metabase
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy 
+  #   # env_file:
+  #   #   - .env  
+  #   # environment:
+  #   #   MB_DB_TYPE: postgres
+  #   #   MB_DB_HOST: postgres
+  #   #   MB_DB_PORT: 5432
+  #   #   MB_DB_DBNAME: ${POSTGRES_DB_METABASE} # Points to the SEPARATE internal DB
+  #   #   MB_DB_USER: ${POSTGRES_USER}
+  #   #   MB_DB_PASS: ${POSTGRES_PASSWORD}
+  #   ports:
+  #     - "5434:3000"
+  #   networks:
+  #     - service-network
 
 
 # =========================================================================
 # VOLUMES & NETWORKS
 # =========================================================================
 volumes:
-  postgres_data:      
+  postgres-data:      
     driver: local
-  redis_data:
+  redis-data:
     driver: local
-  minio_data:
+  minio-data:
     driver: local
-  kafka_data: # for logs
+  kafka-data: # for logs
     driver: local
-  # neo4j_data:    
+  temporal-data:
+    driver: local
+  # neo4j-data:    
   #   driver: local
-  # qdrant_data:       
+  # qdrant-data:       
   #   driver: local
-  pgadmin_working_dir:
+  pgadmin-working-dir:
     driver: local  
 
 networks:
-  service_network:
+  service-network:
     driver: bridge
+    name: service-network
