@@ -70,6 +70,7 @@
 - [License](#license)
 - [Contact](#contact)
 - [Acknowledgements](#acknowledgements)
+- [Other Relevant Resources](#other-relevant-resources)
 
 
 
@@ -243,26 +244,19 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ## Contact
 
 Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
 Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
 
 
 
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
-* [GitHub Emoji Cheat Sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet)
-* [Img Shields](https://shields.io)
-* [Choose an Open Source License](https://choosealicense.com)
-* [GitHub Pages](https://pages.github.com)
-* [Animate.css](https://daneden.github.io/animate.css)
-* [Loaders.css](https://connoratherton.com/loaders)
-* [Slick Carousel](https://kenwheeler.github.io/slick)
-* [Smooth Scroll](https://github.com/cferdinandi/smooth-scroll)
-* [Sticky Kit](http://leafo.net/sticky-kit)
-* [JVectorMap](http://jvectormap.com)
-* [Font Awesome](https://fontawesome.com)
+* [Aiokafka - Apache Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
 
 
+
+## Other Relevant Resources
+* [Medium Article - Building Enterprise Python Microservices with FastAPI in 2025](https://blog.devops.dev/building-enterprise-python-microservices-with-fastapi-in-2025-10-10-kafka-saga-choreography-aeb9781b00a6)
+* [Temporal.io - Set up PostgreSQL Visibility store](https://docs.temporal.io/self-hosted-guide/visibility/postgresql)
 
 
 
