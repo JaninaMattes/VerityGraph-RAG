@@ -28,7 +28,6 @@ class MinioStorage(StorageProvider):
         self.bucket_name = bucket_name
         self.sse_key = sse_key
 
-
     def create_bucket(self) -> None:
         """Checks if bucket already exists for warm start."""
         try:
