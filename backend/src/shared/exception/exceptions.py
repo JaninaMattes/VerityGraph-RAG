@@ -227,7 +227,7 @@ class EventHandlerException(ApplicationException):
     """
 
 
-class EventHandlerProcessingException(ApplicationException):
+class EventHandlerProcessingException(EventHandlerException):
     def __init__(
         self,
         event_type: str,
@@ -235,6 +235,16 @@ class EventHandlerProcessingException(ApplicationException):
         super().__init__(
             f"Error triggered when processing MinIO 'ObjectCreated' events of type {event_type}."
         )
+
+        self.event_type = event_type
+
+
+class EventHandlerNotRegisterdException(EventHandlerException):
+    def __init__(
+        self,
+        event_type: str,
+    ):
+        super().__init__(f"No handler registered for event of type {event_type}.")
 
         self.event_type = event_type
 
