@@ -1,6 +1,29 @@
 services:
+
   # =========================================================================
-  # 1. METADATA & SYSTEM STATE (PostgreSQL)
+  # 1. APPLICATION LAYER (FASTAPI WEB API)
+  # =========================================================================
+  web-api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: web-api
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - service-network
+
+  # =========================================================================
+  # 2. TRACK METADATA & SYSTEM STATE (PostgreSQL)
   # =========================================================================
   postgres:
     image: postgres:16-alpine
@@ -14,7 +37,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
     ports:
       - "5432:5432"
     networks:
@@ -47,7 +69,7 @@ services:
       start_period: 20s
 
   # =========================================================================
-  # 2. CACHE (Redis)
+  # 3. CACHE (Redis)
   # =========================================================================
   redis:
     image: redis:7.2-alpine
@@ -70,7 +92,7 @@ services:
       start_period: 10s
 
   # =========================================================================
-  # 3. BLOB STORAGE (MinIO)
+  # 4. BLOB STORAGE (MinIO S3)
   # =========================================================================
   minio:
     image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
@@ -86,6 +108,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_REGION: ${MINIO_DEFAULT_REGION}
       MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
       MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
       MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}
@@ -126,7 +149,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
+  # 5. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
   kafka-kraft:
     image: confluentinc/cp-kafka:8.3.1
@@ -203,7 +226,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 5. STATELESS ORCHESTRATION (TEMPORAL.io)
+  # 6. STATELESS ORCHESTRATION (TEMPORAL.io)
   # =========================================================================
   temporal:
     image: temporalio/server:1.32.0
@@ -287,17 +310,40 @@ services:
       - service-network
 
   # =========================================================================
-  # 6. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
+  # 7. APP BACKGROUND WORKERS
+  # =========================================================================
+  kafka-consumer:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: kafka-consumer
+    restart: unless-stopped
+    command: python -m src.infrastructure.message_broker.kafka.worker
+    env_file:
+      - ../backend/.env
+    depends_on:
+      kafka-init-topics:
+        condition: service_completed_successfully
+      minio-init-buckets:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+    networks:
+      - service-network
+
+
+  # =========================================================================
+  # 8. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 7. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
+  # 9. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 8. OBSERVABILITY & ANALYTICS
+  # 10. OBSERVABILITY & ANALYTICS
   # =========================================================================  
   pgadmin:
     image: dpage/pgadmin4:9.18.0
@@ -342,7 +388,7 @@ services:
 
 
 # =========================================================================
-# VOLUMES & NETWORKS
+# 11. VOLUMES & NETWORKS
 # =========================================================================
 volumes:
   postgres-data:      
