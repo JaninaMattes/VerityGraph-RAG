@@ -11,7 +11,7 @@ from src.shared.enums.document import DocumentStatus
 class CreateUploadRequest(BaseModel):
     filename: str
     content_type: str
-    namespace: str = "files"
+    namespace: str = "documents"
 
 
 class DocumentStatusResponse(BaseModel):

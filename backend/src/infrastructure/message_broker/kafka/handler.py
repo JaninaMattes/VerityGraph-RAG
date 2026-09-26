@@ -41,31 +41,29 @@ class MinioObjectCreatedHandler(EventHandler):
                     continue
 
                 bucket = record["s3"]["bucket"]["name"]
-                encoded_key = record["s3"]["object"]["key"]
+                raw_object_key = record["s3"]["object"]["key"]
 
-                # Unquote the URL-encoded keys and split
-                object_key = urllib.parse.unquote(encoded_key)
+                # Unquote URL characters (%2F -> /)
+                object_key = urllib.parse.unquote(raw_object_key)
                 key_parts = object_key.split("/")
 
-                # Workflow 1: Updates the PostgreSQL Document status to PROCESSING.
-                # Key format: {minio_bucket}/{tenant_id}/files/{year}/{month}/{docuemnt_id}
-                if len(key_parts) == 6:
-                    document_id = key_parts[-1]
-                    try:
-                        document_id = uuid.UUID(document_id)
-                    except ValueError:
-                        logger.exception(
-                            "Invalid document ID %s. Could not be converted to UUID from object key %s.",
-                            document_id,
-                            object_key,
-                        )
-                        continue
-                else:
-                    logger.exception(
-                        "Invalid key format for object key %s. Skipping malformed message.",
+                # Target format: {bucket-name}/{tenant_id}/{namespace}/{year}/{month}/{document_id}
+                # Safe structure validation: Verify it contains your structured segments
+                if len(key_parts) < 5:
+                    logger.error(
+                        "Invalid key path sequence for object key: %s. Expected at least 5 segments.",
                         object_key,
                     )
                     continue
+
+                # Safely slice from the end to get the exact document UUID string
+                document_id = key_parts[-1]
+
+                logger.info(
+                    "Extracted Document ID: %s from object path: %s",
+                    document_id,
+                    object_key,
+                )
 
                 # Workflow 2:
                 workflow_id = f"ingestion-job-{object_key}"  # Create trackable deterministic workflow_id
