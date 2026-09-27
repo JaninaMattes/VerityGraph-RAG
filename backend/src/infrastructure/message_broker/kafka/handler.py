@@ -43,12 +43,11 @@ class MinioObjectCreatedHandler(EventHandler):
                 bucket = record["s3"]["bucket"]["name"]
                 raw_object_key = record["s3"]["object"]["key"]
 
-                # Unquote URL characters (%2F -> /)
+                # Unquote URL characters (%2F to /)
                 object_key = urllib.parse.unquote(raw_object_key)
                 key_parts = object_key.split("/")
 
                 # Target format: {bucket-name}/{tenant_id}/{namespace}/{year}/{month}/{document_id}
-                # Safe structure validation: Verify it contains your structured segments
                 if len(key_parts) < 5:
                     logger.error(
                         "Invalid key path sequence for object key: %s. Expected at least 5 segments.",
@@ -56,7 +55,7 @@ class MinioObjectCreatedHandler(EventHandler):
                     )
                     continue
 
-                # Safely slice from the end to get the exact document UUID string
+                # Slice end to exact document UUID string
                 document_id = key_parts[-1]
 
                 logger.info(
