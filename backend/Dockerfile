@@ -1,16 +1,22 @@
 FROM python:3.14-slim
 
-# Install uv.
+# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy the application into the container.
-COPY . /app
-
-# Install the application dependencies.
 WORKDIR /app
-RUN uv sync --frozen --no-cache
+
+# Layered Cache Optimisation: Copy and then synchronize dependencies
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-dev --no-cache --compile-bytecode
+
+COPY backend/src /app/src
+COPY backend/alembic /app/alembic
+COPY backend/alembic.ini /app/alembic.ini
+
+# Add virtual environment binaries to PATH
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-# Run the application.
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
