@@ -9,7 +9,7 @@ from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
 from src.shared.core.config import get_settings
 from src.shared.core.logger import get_logger
 
-logger = get_logger("kafka.worker")
+logger = get_logger("kafka.run_worker")
 
 
 async def main() -> None:
@@ -81,6 +81,7 @@ async def main() -> None:
         logger.exception("Error while stopping Kafka consumer loop task.")
 
     logger.info("Background Worker shutdown completed successfully.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
