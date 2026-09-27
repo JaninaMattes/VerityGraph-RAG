@@ -30,7 +30,7 @@
 <br />
 <p align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="docs/images/logo.png" alt="Logo" width="250" height="80">
+    <img src="docs/images/logo.png" alt="Logo" width="200" height="120">
   </a>
 
   <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
@@ -70,7 +70,7 @@
 - [License](#license)
 - [Contact](#contact)
 - [Acknowledgements](#acknowledgements)
-- [Other Relevant Resources](#other-relevant-resources)
+    - [Other Relevant Resources](#other-relevant-resources)
 
 
 
@@ -107,11 +107,19 @@ A list of commonly used resources are listed in the acknowledgements.
 A list of commonly used resources are listed in the acknowledgements.
 
 ### Built With
-This section should list any major frameworks that you built your project using. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-* [Bootstrap](https://getbootstrap.com)
-* [JQuery](https://jquery.com)
-* [Laravel](https://laravel.com)
-
+This section lists any major frameworks that were used to built this project.
+* [FastAPI](https://fastapi.tiangolo.com/)
+* [Docling.ai](https://docling.ai/)
+* [Temporal.io](https://temporal.io/)
+* [LangGraph](https://info.langchain.com/)
+* [LangSmith](https://info.langchain.com/)
+* [MinIO](https://fastapi.tiangolo.com/)
+* [Qdrant](https://qdrant.tech/)
+* [Neo4j](https://neo4j.com/)
+* [PostgreSQL](https://www.postgresql.org//)
+* [Qwen](https://qwen.ai/home)
+* [React](https://react.dev/)
+* [D3.js & React (Graph Gallery)](https://www.react-graph-gallery.com/)
 
 
 <!-- GETTING STARTED -->
@@ -251,11 +259,16 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
 * [Aiokafka - Apache Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
+* [MinIO - Publish Events to Kafka](https://docs.min.io/aistor/administration/bucket-notifications/publish-events-to-kafka/?_gl=1*7nosf2*_up*MQ..*_ga*ODczNDc3ODE0LjE3ODk2MjAwODg.*_ga_EHESQ21MLT*czE3ODk2MjAwODgkbzEkZzAkdDE3ODk2MjAwODgkajYwJGwwJGgw)
 
 
 
-## Other Relevant Resources
+#### Other Relevant Resources
+* [Medium Article - Building a Scalable, Production-Grade Agentic RAG Pipeline](https://levelup.gitconnected.com/building-a-scalable-production-grade-agentic-rag-pipeline-1168dcd36260?sk=847eaad13184d47f2c6a09a9d55e9750)
 * [Medium Article - Building Enterprise Python Microservices with FastAPI in 2025](https://blog.devops.dev/building-enterprise-python-microservices-with-fastapi-in-2025-10-10-kafka-saga-choreography-aeb9781b00a6)
+* [Medium Article - Setting Up a Kafka Cluster Using Docker Compose(Kraft Mode): A Step-by-Step Guide](https://medium.com/@darshak.kachchhi/setting-up-a-kafka-cluster-using-docker-compose-a-step-by-step-guide-a1ee5972b122)
+* [MinIO S3 - Running MinIO locally with Docker Compose](https://pliutau.com/local-minio-docker-compose-buckets)
+* [MinIO S3 - How to Create MinIO Bucket Notifications](https://oneuptime.com/blog/post/2026-01-30-minio-bucket-notifications/view)
 * [Temporal.io - Set up PostgreSQL Visibility store](https://docs.temporal.io/self-hosted-guide/visibility/postgresql)
 
 

@@ -61,7 +61,8 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------
 
     kafka_url: str
-    kafka_topics: str = "minio-events"
+    kafka_topics: list[str] = ["minio-events"]
+    kafka_bootstrap_servers: str = "localhost"
     kafka_group_id: str = "minio-ingestion-group"
     kafka_auto_offset_reset: str = "earliest"
     kafka_enable_auto_commit: bool = False  # manually commit
