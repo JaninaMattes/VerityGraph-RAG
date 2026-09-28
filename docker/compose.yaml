@@ -95,7 +95,7 @@ services:
   # 4. BLOB STORAGE (MinIO S3)
   # =========================================================================
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
+    image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: minio
     depends_on:
       kafka-kraft:
@@ -130,7 +130,7 @@ services:
 
   # Auto-create buckets and attach Kafka notifications on startup
   minio-init-buckets:
-    image: quay.io/minio/mc:RELEASE.2025-03-12T17-29-24Z
+    image: docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     container_name: minio-init-buckets
     depends_on:
       minio:
@@ -140,9 +140,17 @@ services:
     entrypoint: >
       /bin/sh -c "
       sleep 5;
+      echo 'Creating MinIO buckets...';
       /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
       /usr/bin/mc mb --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS};
-      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+
+      # Add lifecycle rules
+      /usr/bin/mc ilm rule rm --all --force dockerminio/${MINIO_DEFAULT_BUCKETS} 2>/dev/null || true;
+      /usr/bin/mc ilm rule add --expiry-days ${KAFKA_EXPIRY_DAYS} dockerminio/${MINIO_DEFAULT_BUCKETS};
+
+      /usr/bin/mc event rm --all --force dockerminio/${MINIO_DEFAULT_BUCKETS} 2>/dev/null || true;
+      /usr/bin/mc event add --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+      echo 'MinIO bucket successfully created.';
       exit 0;
       "
     networks:
@@ -201,7 +209,15 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      kafka-topics --bootstrap-server kafka-kraft:9092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 1 --replication-factor 1;
+      echo 'Creating Kafka topics...';
+      kafka-topics --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS}  \
+      --create  \
+      --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} \
+      --partitions ${KAFKA_DEFAULT_PARTITIONS} \
+      --replication-factor ${KAFKA_DEFAULT_REPLICATION_FACTOR} \
+      --config retention.ms=${KAFKA_DEFAULT_RETENTION} \
+      --config cleanup.policy=delete;
+      echo 'Kafka topics created successfully.';
       exit 0;
       "
     networks:
@@ -318,7 +334,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: kafka-consumer
     restart: unless-stopped
-    command: python -m src.infrastructure.message_broker.kafka.run_worker
+    command: python -m src.infrastructure.message_broker.kafka.worker
     env_file:
       - ../backend/.env
     depends_on:
