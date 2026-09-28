@@ -111,7 +111,7 @@ services:
       MINIO_REGION: ${MINIO_DEFAULT_REGION}
       MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
       MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
-      MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}
+      MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}      
       MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # convention: MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
       MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: ${MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY} # Single primary broker for dev environment
       MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}
@@ -141,7 +141,7 @@ services:
       /bin/sh -c "
       sleep 5;
       echo 'Creating MinIO buckets...';
-      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       /usr/bin/mc mb --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS};
 
       # Add lifecycle rules
@@ -210,13 +210,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       echo 'Creating Kafka topics...';
-      kafka-topics --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS}  \
-      --create  \
-      --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} \
-      --partitions ${KAFKA_DEFAULT_PARTITIONS} \
-      --replication-factor ${KAFKA_DEFAULT_REPLICATION_FACTOR} \
-      --config retention.ms=${KAFKA_DEFAULT_RETENTION} \
-      --config cleanup.policy=delete;
+      kafka-topics --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} --create --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions ${KAFKA_DEFAULT_PARTITIONS} --replication-factor ${KAFKA_DEFAULT_REPLICATION_FACTOR} --config retention.ms=${KAFKA_DEFAULT_RETENTION} --config cleanup.policy=delete;
       echo 'Kafka topics created successfully.';
       exit 0;
       "
