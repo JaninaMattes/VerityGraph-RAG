@@ -108,13 +108,12 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_REGION: ${MINIO_DEFAULT_REGION}
-      MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
-      MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
-      MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}      
+      MINIO_REGION: ${MINIO_DEFAULT_REGION}    
       MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # convention: MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
       MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: ${MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY} # Single primary broker for dev environment
       MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}
+      MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
+      MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
     command: [ "server", "--console-address", ":9001", "/data" ]
     ports:
       - "9000:9000"  # S3 API
@@ -149,7 +148,7 @@ services:
       /usr/bin/mc ilm rule add --expiry-days ${KAFKA_EXPIRY_DAYS} dockerminio/${MINIO_DEFAULT_BUCKETS};
 
       /usr/bin/mc event rm --all --force dockerminio/${MINIO_DEFAULT_BUCKETS} 2>/dev/null || true;
-      /usr/bin/mc event add --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+      /usr/bin/mc event add --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --suffix .pdf --event put,delete;
       echo 'MinIO bucket successfully created.';
       exit 0;
       "
