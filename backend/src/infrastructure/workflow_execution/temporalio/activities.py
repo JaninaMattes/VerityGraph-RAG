@@ -38,5 +38,5 @@ async def process_document_activity(payload: dict[str, Any]) -> None:
     activity.logger.info(
         f"Processing document: {payload['document_id']} from {payload['bucket']}"
     )
-    # TODO: Heavy AI/ML work, MinIO download, chunking, embedding
-    await asyncio.sleep(5)  # Simulate heavy processing
+    # TODO: Heavy AI/ML workload: MinIO download, chunking, embedding, compression
+    await asyncio.sleep(5)  # Simulate processing
