@@ -19,6 +19,7 @@ class DocumentType(StrEnum):
 class DocumentStatus(StrEnum):
     UPLOAD_PENDING = "pending"
     UPLOADED = "uploaded"
+    PROCESSED = "processed"
     READY = "ready"
     FAILED = "failed"
     DELETED = "deleted"
