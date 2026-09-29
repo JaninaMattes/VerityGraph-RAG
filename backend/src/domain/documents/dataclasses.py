@@ -11,7 +11,7 @@ from src.shared.enums.storage import StorageProvider
 @dataclass(slots=True, frozen=True)
 class StorageKey:
     """
-    Canonical object identifier inside blob storage.
+    Canonical object identifier inside S3 storage.
     Follows S3/MinIO best practices for lifecycle management and tenant isolation.
     """
 
