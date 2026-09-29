@@ -92,7 +92,7 @@ services:
       start_period: 10s
 
   # =========================================================================
-  # 4. BLOB STORAGE (MinIO S3)
+  # 4. FILE STORAGE (MinIO S3)
   # =========================================================================
   minio:
     image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z
@@ -108,12 +108,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_REGION: ${MINIO_DEFAULT_REGION}    
+      MINIO_REGION: ${MINIO_DEFAULT_REGION}
+      MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
+      MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
+      MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}
       MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # convention: MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
       MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: ${MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY} # Single primary broker for dev environment
       MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}
-      MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
-      MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
     command: [ "server", "--console-address", ":9001", "/data" ]
     ports:
       - "9000:9000"  # S3 API
@@ -141,15 +142,11 @@ services:
       sleep 5;
       echo 'Creating MinIO buckets...';
       /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS};
+      /usr/bin/mc admin info dockerminio;
 
-      # Add lifecycle rules
-      /usr/bin/mc ilm rule rm --all --force dockerminio/${MINIO_DEFAULT_BUCKETS} 2>/dev/null || true;
-      /usr/bin/mc ilm rule add --expiry-days ${KAFKA_EXPIRY_DAYS} dockerminio/${MINIO_DEFAULT_BUCKETS};
-
-      /usr/bin/mc event rm --all --force dockerminio/${MINIO_DEFAULT_BUCKETS} 2>/dev/null || true;
-      /usr/bin/mc event add --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --suffix .pdf --event put,delete;
-      echo 'MinIO bucket successfully created.';
+      /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS} --ignore-existing;
+      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete --ignore-existing;
+      /usr/bin/mc admin config get dockerminio/ notify_kafka;
       exit 0;
       "
     networks:
@@ -209,8 +206,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       echo 'Creating Kafka topics...';
-      kafka-topics --bootstrap-server ${KAFKA_BOOTSTRAP_SERVERS} --create --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions ${KAFKA_DEFAULT_PARTITIONS} --replication-factor ${KAFKA_DEFAULT_REPLICATION_FACTOR} --config retention.ms=${KAFKA_DEFAULT_RETENTION} --config cleanup.policy=delete;
-      echo 'Kafka topics created successfully.';
+      kafka-topics --bootstrap-server kafka-kraft:9092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 1 --replication-factor 1;
       exit 0;
       "
     networks:
