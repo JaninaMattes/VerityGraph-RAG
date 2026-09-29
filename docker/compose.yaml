@@ -1,54 +1,98 @@
 services:
+
   # =========================================================================
-  # 1. METADATA & SYSTEM STATE (PostgreSQL)
+  # 1. APPLICATION LAYER (FASTAPI WEB API)
+  # =========================================================================
+  web-api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: web-api
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - service-network
+
+  # =========================================================================
+  # 2. TRACK METADATA & SYSTEM STATE (PostgreSQL)
   # =========================================================================
   postgres:
     image: postgres:16-alpine
     container_name: postgres
     restart: unless-stopped
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     env_file:
       - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # POSTGRES_MULTIPLE_DATABASES: "${POSTGRES_DB},${POSTGRES_DB_METABASE}" 
     ports:
       - "5432:5432"
     networks:
-      - service_network
+      - service-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 20s
+
+  postgresql:
+    image: postgres:16-alpine
+    container_name: postgresql
+    restart: unless-stopped
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD}
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER}
+    networks:
+      - service-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEMPORAL_POSTGRES_USER} -d ${TEMPORAL_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # =========================================================================
-  # 2. CACHE (Redis)
+  # 3. CACHE (Redis)
   # =========================================================================
   redis:
     image: redis:7.2-alpine
     container_name: redis
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - redis-data:/data
+    env_file:
+      - .env
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     networks:
-      - service_network
+      - service-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
   # =========================================================================
-  # 3. BLOB STORAGE (MinIO) - REQUIRED FOR YOUR ARCHITECTURE
+  # 4. BLOB STORAGE (MinIO S3)
   # =========================================================================
   minio:
     image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
@@ -58,16 +102,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
     volumes:
-      - minio_data:/data
+      - minio-data:/data
     env_file:
       - .env
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_REGION: ${MINIO_DEFAULT_REGION}
       MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY}
       MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY: ${MINIO_NOTIFY_KAFKA_QUEUE_LIMIT_PRIMARY}
       MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY: ${MINIO_NOTIFY_KAFKA_BATCH_SIZE_PRIMARY}
-      MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
+      MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY: ${MINIO_NOTIFY_KAFKA_ENABLE_PRIMARY} # convention: MINIO_NOTIFY_KAFKA_ENABLE_<IDENTIFIER>
       MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY: ${MINIO_NOTIFY_KAFKA_BROKERS_PRIMARY} # Single primary broker for dev environment
       MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY: ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY}
     command: [ "server", "--console-address", ":9001", "/data" ]
@@ -75,12 +120,13 @@ services:
       - "9000:9000"  # S3 API
       - "9001:9001"  # Web Console
     networks:
-      - service_network
+      - service-network
     healthcheck:
       test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/localhost/9000"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   # Auto-create buckets and attach Kafka notifications on startup
   minio-init-buckets:
@@ -95,21 +141,21 @@ services:
       /bin/sh -c "
       sleep 5;
       /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS};
+      /usr/bin/mc mb --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS};
       /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete;
       exit 0;
       "
     networks:
-      - service_network
-
+      - service-network
 
   # =========================================================================
-  # 4. MESSAGE BROKER (Apache Kafka - KRaft Mode)
+  # 5. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
   kafka-kraft:
     image: confluentinc/cp-kafka:8.3.1
     container_name: kafka-kraft
     hostname: kafka-kraft
+    restart: unless-stopped
     env_file:
       - .env
     environment:
@@ -117,24 +163,27 @@ services:
       KAFKA_NODE_ID: ${KAFKA_NODE_ID}
       KAFKA_PROCESS_ROLES: 'broker,controller'
       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka-kraft:9093'
-      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-kraft:9092'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      # Dual-listener schema: PLAINTEXT for internal containers, EXTERNAL for host execution
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-kraft:9092,EXTERNAL://localhost:9094'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT'
       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
       KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}   # Set to 1 for a single-node cluster
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: ${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}   # Note: Set to 1 for a single-node cluster
       KAFKA_DEFAULT_REPLICATION_FACTOR: ${KAFKA_DEFAULT_REPLICATION_FACTOR}               # Set to 1 for a single-node cluster
       KAFKA_MIN_INSYNC_REPLICAS: ${KAFKA_MIN_INSYNC_REPLICAS}                             # Set to 1 for a single-node cluster
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: ${KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS}
     ports:
       - "9092:9092"
       - "9093:9093"
+      - "9094:9094" # external listener
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - kafka-data:/var/lib/kafka/data
     networks:
-      - service_network
+      - service-network
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,6 +193,9 @@ services:
   kafka-init-topics:
     image: confluentinc/cp-kafka:8.3.1
     container_name: kafka-init-topics
+    restart: "no" # Run once and exit
+    env_file:
+      - .env
     depends_on:
       kafka-kraft:
         condition: service_healthy
@@ -153,13 +205,16 @@ services:
       exit 0;
       "
     networks:
-      - service_network
+      - service-network
 
   kafka-ui:
     image: ghcr.io/kafbat/kafka-ui:latest
     container_name: kafka-ui
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
       DYNAMIC_CONFIG_ENABLED: ${DYNAMIC_CONFIG_ENABLED}
       KAFKA_CLUSTERS_0_NAME: ${KAFKA_CLUSTERS_0_NAME}
@@ -168,72 +223,134 @@ services:
       kafka-kraft:
         condition: service_healthy
     networks:
-      - service_network
-
-  # redpanda:
-  #   image: docker.redpanda.com/redpandadata/redpanda:v23.3.4
-  #   container_name: redpanda
-  #   restart: unless-stopped
-  #   command:
-  #     - redpanda
-  #     - start
-  #     - --smp 1
-  #     - --overprovisioned
-  #     - --node-id 0
-  #     - --kafka-addr PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
-  #     - --advertise-kafka-addr PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
-  #   ports:
-  #     - "9092:9092"      # Kafka API (for backend)
-  #     - "9644:9644"      # Redpanda Console (http://localhost:9644)
-  #   networks:
-  #     - service_network
-
-
-  # # =========================================================================
-  # # 5. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
-  # # =========================================================================
-  # neo4j:
-  #   image: neo4j:5.16.0-community
-  #   container_name: neo4j
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
-  #     NEO4J_dbms_memory_pagecache_size: 1G
-  #     NEO4J_dbms_memory_heap_initial__size: 1G
-  #   ports:
-  #     - "7474:7474" # HTTP Browser
-  #     - "7687:7687" # Bolt Protocol
-  #   volumes:
-  #     - neo4j_data:/data
-  #   networks:
-  #     - service_network
-
-  # # =========================================================================
-  # # 6. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
-  # # =========================================================================
-  # qdrant:
-  #   image: qdrant/qdrant:v1.7.3
-  #   container_name: qdrant
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6333:6333" # REST API
-  #     - "6334:6334" # gRPC API (faster for backend)
-  #   volumes:
-  #     - qdrant_data:/qdrant/storage
-  #   networks:
-  #     - service_network
+      - service-network
 
   # =========================================================================
-  # 7. OBSERVABILITY & ANALYTICS
+  # 6. STATELESS ORCHESTRATION (TEMPORAL.io)
+  # =========================================================================
+  temporal:
+    image: temporalio/server:1.32.0
+    container_name: temporal
+    depends_on:
+      temporal-admin-tools:
+        condition: service_completed_successfully
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER}
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    networks:
+      - service-network
+    ports:
+      - '7233:7233'
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 20
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.32.0
+    container_name: temporal-admin-tools
+    restart: on-failure:6
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER}
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=postgresql
+      - SQL_PASSWORD=${TEMPORAL_POSTGRES_PASSWORD}
+    networks:
+      - service-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/setup-postgres.sh
+
+
+  temporal-create-namespace:
+    image: temporalio/admin-tools:1.32.0
+    container_name: temporal-create-namespace
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_URL}
+      - DEFAULT_NAMESPACE=${TEMPORAL_DEFAULT_NAMESPACE}
+    networks:
+      - service-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh"]
+    command: /scripts/create-namespace.sh
+
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: temporal-ui
+    ports:
+      - "8081:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=${TEMPORAL_URL}
+      - TEMPORAL_CORS_ORIGINS=${TEMPORAL_CORS_ORIGINS}
+    networks:
+      - service-network
+
+  # =========================================================================
+  # 7. APP BACKGROUND WORKERS
+  # =========================================================================
+  kafka-consumer:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: kafka-consumer
+    restart: unless-stopped
+    command: python -m src.infrastructure.message_broker.kafka.run_worker
+    env_file:
+      - ../backend/.env
+    depends_on:
+      kafka-init-topics:
+        condition: service_completed_successfully
+      minio-init-buckets:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+    networks:
+      - service-network
+
+
+  # =========================================================================
+  # 8. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
+  # =========================================================================
+
+
+  # =========================================================================
+  # 9. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
+  # =========================================================================
+
+
+  # =========================================================================
+  # 10. OBSERVABILITY & ANALYTICS
   # =========================================================================  
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:9.18.0
     container_name: pgadmin
     restart: unless-stopped
     volumes:
-      - pgadmin_working_dir:/var/lib/pgadmin
+      - pgadmin-working-dir:/var/lib/pgadmin
     env_file:
       - .env  
     environment:
@@ -246,49 +363,50 @@ services:
     ports:
       - "5433:80"
     networks:
-      - service_network
+      - service-network
   
-  metabase:
-    image: metabase/metabase:latest
-    container_name: metabase
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy 
-    # env_file:
-    #   - .env  
-    # environment:
-    #   MB_DB_TYPE: postgres
-    #   MB_DB_HOST: postgres
-    #   MB_DB_PORT: 5432
-    #   MB_DB_DBNAME: ${POSTGRES_DB_METABASE} # Points to the SEPARATE internal DB
-    #   MB_DB_USER: ${POSTGRES_USER}
-    #   MB_DB_PASS: ${POSTGRES_PASSWORD}
-    ports:
-      - "5434:3000"
-    networks:
-      - service_network
+  # metabase:
+  #   image: metabase/metabase:latest
+  #   container_name: metabase
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy 
+  #   # env_file:
+  #   #   - .env  
+  #   # environment:
+  #   #   MB_DB_TYPE: postgres
+  #   #   MB_DB_HOST: postgres
+  #   #   MB_DB_PORT: 5432
+  #   #   MB_DB_DBNAME: ${POSTGRES_DB_METABASE} # Points to the SEPARATE internal DB
+  #   #   MB_DB_USER: ${POSTGRES_USER}
+  #   #   MB_DB_PASS: ${POSTGRES_PASSWORD}
+  #   ports:
+  #     - "5434:3000"
+  #   networks:
+  #     - service-network
 
 
 # =========================================================================
-# VOLUMES & NETWORKS
+# 11. VOLUMES & NETWORKS
 # =========================================================================
 volumes:
-  postgres_data:      
+  postgres-data:      
     driver: local
-  redis_data:
+  postgresql-data:      
     driver: local
-  minio_data:
+  redis-data:
     driver: local
-  kafka_data: # for logs
+  minio-data:
     driver: local
-  # neo4j_data:    
-  #   driver: local
-  # qdrant_data:       
-  #   driver: local
-  pgadmin_working_dir:
+  kafka-data: # for logs
+    driver: local
+  temporal-data:
+    driver: local
+  pgadmin-working-dir:
     driver: local  
 
 networks:
-  service_network:
+  service-network:
     driver: bridge
+    name: service-network

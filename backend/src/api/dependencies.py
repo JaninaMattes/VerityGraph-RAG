@@ -29,7 +29,6 @@ from src.shared.core.logger import get_logger
 
 logger = get_logger("api.dependencies")
 
-
 # Reuse settings dependency across sub-providers
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -38,9 +37,9 @@ DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
     return Minio(
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key.get_secret_value(),
-        secret_key=settings.minio_secret_key.get_secret_value(),
+        endpoint=settings.minio_url,
+        access_key=settings.minio_root_user.get_secret_value(),
+        secret_key=settings.minio_root_password.get_secret_value(),
         region=settings.minio_region,
         secure=settings.minio_secure,
     )
@@ -49,8 +48,8 @@ def get_minio_client(settings: SettingsDep) -> Minio:
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 
-# Dependency provider testing
-DEV_TENANT_ID = uuid.UUID("15a97078-162a-44f2-b950-d0d90d684fca")
+# TODO: Remove, just for dependency provider testing
+DEV_TENANT_ID = uuid.UUID("5daee1ca-8268-492a-9f2d-64b1116fe957")
 
 
 async def get_current_tenant_id() -> uuid.UUID:

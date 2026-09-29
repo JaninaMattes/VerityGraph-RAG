@@ -10,16 +10,20 @@ class DocumentRepository(Protocol):
     async def create(
         self,
         document: DocumentEntity,
-    ) -> DocumentEntity: ...
+    ) -> DocumentEntity:
+        raise NotImplementedError("Subclasses must implement create method")
 
     async def update(
         self,
         document: DocumentEntity,
-    ) -> DocumentEntity: ...
+    ) -> DocumentEntity:
+        raise NotImplementedError("Subclasses must implement update method")
 
-    async def get_one(self, document_id: UUID) -> DocumentEntity: ...
+    async def get_one(self, document_id: UUID) -> DocumentEntity:
+        raise NotImplementedError("Subclasses must implement get_one method")
 
     async def delete(
         self,
         document: DocumentEntity,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError("Subclasses must implement delete method")

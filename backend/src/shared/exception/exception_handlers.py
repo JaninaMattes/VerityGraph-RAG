@@ -6,6 +6,7 @@ from src.shared.exception.exceptions import (
     AccessDeniedException,
     DatabaseInternalException,
     DatabaseOperationException,
+    EventHandlerException,
     NotFoundException,
     ServiceException,
     StorageException,
@@ -116,6 +117,21 @@ async def service_exception_handler(
         },
     )
 
+async def event_handler_exception_handler(
+    request: Request, exc: EventHandlerException
+) -> JSONResponse:
+    logger.exception(
+        "Event handler failed during %s %s",
+        request.method,
+        request.url,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "internal_error",
+            "message": "A service error occured.",
+        },
+    )
 
 async def unexpected_exception_handler(
     request: Request,
@@ -169,6 +185,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         ServiceException,
         service_exception_handler,  # type: ignore
     )
+
+    app.add_exception_handler(EventHandlerException, event_handler_exception_handler)  # type: ignore
 
     app.add_exception_handler(
         Exception,

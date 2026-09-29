@@ -6,12 +6,9 @@ from datetime import UTC, datetime, timedelta
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
-from src.domain.ingestions.entities import IngestionJobEntity
-from src.domain.ingestions.repository import IngestionJobRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.shared.core.logger import get_logger
 from src.shared.enums.document import DocumentStatus
-from src.shared.enums.ingestionjob import ProcessingStatus
 from src.shared.exception.exceptions import (
     DatabaseException,
     DocumentServiceException,
@@ -66,16 +63,6 @@ class DocumentService:
             )
             db_document = await self.doc_repository.create(doc_entity)
 
-            # Create ingestion job in DB
-            job_entity = IngestionJobEntity(
-                job_id=job_id,
-                document_id=document_id,
-                status=ProcessingStatus.PENDING,
-                created_at=now,
-                updated_at=now,
-            )
-            await self.job_repository.create(job_entity)
-            
             # Create presigned URL
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,

@@ -10,16 +10,20 @@ class IngestionJobRepository(Protocol):
     async def create(
         self,
         job: IngestionJobEntity,
-    ) -> IngestionJobEntity: ...
+    ) -> IngestionJobEntity:
+        raise NotImplementedError("Subclasses must implement create method")
 
-    async def get_one(self, job_id: UUID, document_id: UUID) -> IngestionJobEntity: ...
+    async def get_one(self, job_id: UUID, document_id: UUID) -> IngestionJobEntity:
+        raise NotImplementedError("Subclasses must implement get_one method")
 
     async def update(
         self,
         job: IngestionJobEntity,
-    ) -> IngestionJobEntity: ...
+    ) -> IngestionJobEntity:
+        raise NotImplementedError("Subclasses must implement update method")
 
     async def delete(
         self,
         job: IngestionJobEntity,
-    ) -> None: ...
+    ) -> None:
+        raise NotImplementedError("Subclasses must implement delete method")
