@@ -2,6 +2,8 @@ import urllib.parse
 from typing import Any
 
 from temporalio.client import Client
+from temporalio.common import WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from src.infrastructure.message_broker.provider import EventHandler
 from src.shared.core.logger import get_logger
@@ -39,8 +41,15 @@ class MinioObjectCreatedHandler(EventHandler):
                     )
                     continue
 
-                bucket = record["s3"]["bucket"]["name"]
-                raw_object_key = record["s3"]["object"]["key"]
+                s3_data = record.get("s3", {})
+                bucket = s3_data.get("bucket", {}).get("name")
+                raw_object_key = s3_data.get("object", {}).get("key")
+
+                if not bucket or not raw_object_key:
+                    logger.error(
+                        "Malformed record skipped. Missing bucket name or object key."
+                    )
+                    continue
 
                 # Unquote URL characters (%2F to /)
                 object_key = urllib.parse.unquote(raw_object_key)
@@ -56,39 +65,48 @@ class MinioObjectCreatedHandler(EventHandler):
 
                 # Slice end to exact document UUID string
                 document_id = key_parts[-1]
-
                 logger.info(
-                    "Extracted Document ID: %s from object path: %s",
+                    "Extracted document id: %s from object path: %s",
                     document_id,
                     object_key,
                 )
 
-                # Workflow 2:
-                workflow_id = f"ingestion-job-{object_key}"  # Create trackable deterministic workflow_id
-                await self.temporal_client.start_workflow(
-                    "DocumentIngestionWorkflow",  # Must match @workflow.defn name
-                    args=[
+                try:
+                    # Start Ingestion Workflow
+                    workflow_id = f"ingestion-job-{document_id}"  # Create trackable deterministic workflow_id
+                    await self.temporal_client.start_workflow(
+                        "DocumentIngestionWorkflow",  # Must match @workflow.defn name
                         {
                             "document_id": str(document_id),
                             "bucket": bucket,
                             "object_key": object_key,
-                            "size": record["s3"]["object"].get("size", 0),
-                            "mime_type": record["s3"]["object"].get(
+                            "size": s3_data["object"].get(
+                                "size", -1
+                            ),  # negative values are treated as unknown size
+                            "mime_type": s3_data["object"].get(
                                 "contentType", "application/octet-stream"
                             ),
-                        }
-                    ],
-                    id=workflow_id,
-                    task_queue=self.temporal_task_queue,
-                )
-                logger.info(
-                    "Successfully triggered Temporal workflow with id: %s", workflow_id
-                )
+                        },
+                        id=workflow_id,
+                        task_queue=self.temporal_task_queue,
+                        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                    )
+                    logger.info(
+                        "Successfully triggered Temporal workflow with id: %s",
+                        workflow_id,
+                    )
+                except WorkflowAlreadyStartedError:
+                    # Deduplicate event pipeline
+                    logger.info(
+                        "Workflow already exists for document with id %s. Ignoring duplicate event.",
+                        document_id,
+                    )
 
         except Exception as exc:
+            failed_key = payload.get("Key", "Unknown-Payload-Key")
             logger.exception(
                 "System failure when handling MinIO 'ObjectCreated' events for document with Key:  %s",
-                payload["Key"],
+                failed_key,
             )
             raise EventHandlerException(
                 "Failed to handle incoming MinIO 'ObjectCreated' events."

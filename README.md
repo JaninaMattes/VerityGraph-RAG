@@ -64,13 +64,14 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+  - [Temporal Web UI](#temporal-web-ui)
     - [Example: Manually upload/download file](#example-manually-uploaddownload-file)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 - [Contact](#contact)
 - [Acknowledgements](#acknowledgements)
-    - [Other Relevant Resources](#other-relevant-resources)
+    - [Additional Resources](#additional-resources)
 
 
 
@@ -94,7 +95,7 @@ Instead of simply returning static chunks of text or a summary of text, VerityGr
 4. Exports: Users can export the generated visual dashboard and the citation bibliography as a PDF/Excel report.
 
 ## System Design
-![System Design Schema Screen Shot](./docs/images/system_design.png)
+![System Design Schema Screen Shot](./docs/images/system-design.png)
 
 A scalable GraphRAG pipeline, built around agents, with six core layers:
 
@@ -198,9 +199,23 @@ const API_KEY = 'ENTER YOUR API';
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
+Start the service via:
+```bash
+docker compose up --build -d
+```
 
-_For more examples, please refer to the [Documentation](https://example.com)_
+For more information, please refer to the [Documentation](https://example.com).
+
+### Temporal Web UI
+
+The Temporal Web UI is accessible at:
+```http
+http://localhost:8081/
+```
+
+You can view the UI by navigating to the above URL in your web browser.
+
+<img src="docs/images/temporal-web-ui.png" alt="Temporal Web UI" width="100%" height="">
 
 
 #### Example: Manually upload/download file
@@ -213,7 +228,7 @@ curl -v \
   --upload-file <your-file-path> \
   <presigned-URL-from-MinIO-S3-bucket>
 ```
-
+  
 2. Download file
 ``` 
   curl -o <filename> \
@@ -260,16 +275,19 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 ## Acknowledgements
 * [Aiokafka - Apache Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
 * [MinIO - Publish Events to Kafka](https://docs.min.io/aistor/administration/bucket-notifications/publish-events-to-kafka/?_gl=1*7nosf2*_up*MQ..*_ga*ODczNDc3ODE0LjE3ODk2MjAwODg.*_ga_EHESQ21MLT*czE3ODk2MjAwODgkbzEkZzAkdDE3ODk2MjAwODgkajYwJGwwJGgw)
+* [MinIO - Kafka Notification Settings](https://docs.min.io/aistor/reference/aistor-server/settings/notifications/kafka/?_gl=1*62ple9*_up*MQ..*_ga*OTM4MjM3MDkyLjE3ODk2MjAzMzQ.*_ga_EHESQ21MLT*czE3ODk2MjAzMzQkbzEkZzAkdDE3ODk2MjAzMzQkajYwJGwwJGgw&tab=kafka-multi-targets-configuration-settings#minio-server-envvar-bucket-notification-kafka)
+* [MinIO - MinIO Bucket Notification Guide](https://github.com/minio/minio/blob/master/docs/bucket/notifications/README.md)
 
 
-
-#### Other Relevant Resources
+#### Additional Resources
 * [Medium Article - Building a Scalable, Production-Grade Agentic RAG Pipeline](https://levelup.gitconnected.com/building-a-scalable-production-grade-agentic-rag-pipeline-1168dcd36260?sk=847eaad13184d47f2c6a09a9d55e9750)
 * [Medium Article - Building Enterprise Python Microservices with FastAPI in 2025](https://blog.devops.dev/building-enterprise-python-microservices-with-fastapi-in-2025-10-10-kafka-saga-choreography-aeb9781b00a6)
-* [Medium Article - Setting Up a Kafka Cluster Using Docker Compose(Kraft Mode): A Step-by-Step Guide](https://medium.com/@darshak.kachchhi/setting-up-a-kafka-cluster-using-docker-compose-a-step-by-step-guide-a1ee5972b122)
+* [Medium Article - Setting Up a Kafka Cluster Using Docker Compose (Kraft Mode): A Step-by-Step Guide](https://medium.com/@darshak.kachchhi/setting-up-a-kafka-cluster-using-docker-compose-a-step-by-step-guide-a1ee5972b122)
+* [Medium Article - Dead Letter Queues: What They Are and When to Use Them](https://medium.com/@danthelion/dead-letter-queues-what-they-are-and-when-to-use-them-252c33fb4ced)
 * [MinIO S3 - Running MinIO locally with Docker Compose](https://pliutau.com/local-minio-docker-compose-buckets)
 * [MinIO S3 - How to Create MinIO Bucket Notifications](https://oneuptime.com/blog/post/2026-01-30-minio-bucket-notifications/view)
 * [Temporal.io - Set up PostgreSQL Visibility store](https://docs.temporal.io/self-hosted-guide/visibility/postgresql)
+* [OneUptime - How to Fix 'TopicExistsException' in Kafka](https://oneuptime.com/blog/post/2026-01-24-kafka-topic-exists-exception/view)
 
 
 
@@ -287,4 +305,4 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 [license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: docs/system_design.png
+[product-screenshot]: docs/system-design.png

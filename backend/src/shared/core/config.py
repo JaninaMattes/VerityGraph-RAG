@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     postgres_echo: bool = False
 
     # ---------------------------------------------------------
-    # Blob Storagee (e.g. MinIO S3)
+    # S3 Storagee (e.g. MinIO S3)
     # ---------------------------------------------------------
 
     minio_url: str

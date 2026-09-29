@@ -128,7 +128,7 @@ class DocumentService:
             # Fetch document metadata
             db_document = await self.doc_repository.get_one(document_id)
 
-            # Retrieve blob storage metadata
+            # Retrieve S3 storage metadata
             metadata = await asyncio.to_thread(
                 self.storage.get_obj_metadata,
                 storage_key=db_document.storage_key,
@@ -165,7 +165,7 @@ class DocumentService:
             # Delete from database
             await self.doc_repository.delete(db_document)
 
-            # Delete from blob storage
+            # Delete from S3 storage
             await asyncio.to_thread(
                 self.storage.delete_object,
                 storage_key=db_document.storage_key,
