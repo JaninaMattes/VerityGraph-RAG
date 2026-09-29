@@ -49,7 +49,7 @@ def get_minio_client(settings: SettingsDep) -> Minio:
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 
 # TODO: Remove, just for dependency provider testing
-DEV_TENANT_ID = uuid.UUID("5daee1ca-8268-492a-9f2d-64b1116fe957")
+DEV_TENANT_ID = uuid.UUID("b683cc7b-900f-4d17-b41d-39aa04bf2a54")
 
 
 async def get_current_tenant_id() -> uuid.UUID:

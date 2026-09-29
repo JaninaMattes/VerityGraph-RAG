@@ -16,6 +16,7 @@ with workflow.unsafe.imports_passed_through():
 
 """ Workflows are used to onfigure and organise the execution activities."""
 
+
 @workflow.defn
 class SayHello:
     @workflow.run
