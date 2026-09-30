@@ -1,7 +1,24 @@
 services:
+  # =========================================================================
+  # 1. DATABASE MIGRATIONS 
+  # =========================================================================
+  migrate:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: db-migrate
+    command: alembic upgrade head
+    env_file:
+      - ../backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - service-network
+    restart: "no"
 
   # =========================================================================
-  # 1. APPLICATION LAYER (FASTAPI WEB API)
+  # 2. APPLICATION LAYER (FASTAPI WEB API)
   # =========================================================================
   web-api:
     build:
@@ -15,15 +32,15 @@ services:
     env_file:
       - ../backend/.env
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - service-network
 
   # =========================================================================
-  # 2. TRACK METADATA & SYSTEM STATE (PostgreSQL)
+  # 3. TRACK METADATA & SYSTEM STATE (PostgreSQL)
   # =========================================================================
   postgres:
     image: postgres:16-alpine
@@ -69,7 +86,7 @@ services:
       start_period: 20s
 
   # =========================================================================
-  # 3. CACHE (Redis)
+  # 4. CACHE (Redis)
   # =========================================================================
   redis:
     image: redis:7.2-alpine
@@ -92,7 +109,7 @@ services:
       start_period: 10s
 
   # =========================================================================
-  # 4. FILE STORAGE (MinIO S3)
+  # 5. FILE STORAGE (MinIO S3)
   # =========================================================================
   minio:
     image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z
@@ -153,7 +170,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 5. MESSAGE BROKER (Apache Kafka - KRaft Mode)
+  # 6. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
   kafka-kraft:
     image: confluentinc/cp-kafka:8.3.1
@@ -231,7 +248,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 6. STATELESS ORCHESTRATION (TEMPORAL.io)
+  # 7. STATELESS ORCHESTRATION (TEMPORAL.io)
   # =========================================================================
   temporal:
     image: temporalio/server:1.32.0
@@ -315,7 +332,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 7. APP BACKGROUND WORKERS
+  # 8. APP BACKGROUND WORKERS
   # =========================================================================
   kafka-consumer:
     build:
@@ -338,17 +355,17 @@ services:
 
 
   # =========================================================================
-  # 8. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
+  # 9. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 9. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
+  # 10. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 10. OBSERVABILITY & ANALYTICS
+  # 11. OBSERVABILITY & ANALYTICS
   # =========================================================================  
   pgadmin:
     image: dpage/pgadmin4:9.18.0
@@ -393,7 +410,7 @@ services:
 
 
 # =========================================================================
-# 11. VOLUMES & NETWORKS
+# 12. VOLUMES & NETWORKS
 # =========================================================================
 volumes:
   postgres-data:      
