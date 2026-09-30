@@ -1,21 +1,21 @@
 """initial database schema
 
-Revision ID: f1c3cde5fe54
+Revision ID: 85002e92591a
 Revises: 
-Create Date: 2026-09-14 15:49:10.600272
+Create Date: 2026-09-30 19:53:37.420100
 
 """
-from collections.abc import Sequence
+from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'f1c3cde5fe54'
-down_revision: str | Sequence[str] | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision: str = '85002e92591a'
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
@@ -44,12 +44,12 @@ def upgrade() -> None:
     sa.Column('language', sa.Enum('ENGLISH', name='languagetype'), nullable=True),
     sa.Column('bucket_name', sa.Text(), nullable=True),
     sa.Column('storage_key', sa.Text(), nullable=False),
-    sa.Column('storage_provider', sa.Enum('MINIO', 'S3', 'AZURE', 'LOCAL', name='storageprovider'), nullable=True),
+    sa.Column('storage_type', sa.Enum('MINIO', 'AWS', 'AZURE', 'LOCAL', name='storagetype'), nullable=True),
     sa.Column('version_id', sa.String(length=255), nullable=True),
     sa.Column('etag', sa.String(length=255), nullable=True),
     sa.Column('checksum', sa.String(length=64), nullable=True),
     sa.Column('size_bytes', sa.BigInteger(), server_default='-1', nullable=False),
-    sa.Column('status', sa.Enum('UPLOAD_PENDING', 'UPLOADED', 'READY', 'FAILED', 'DELETED', name='documentstatus'), nullable=False),
+    sa.Column('status', sa.Enum('UPLOAD_PENDING', 'UPLOADED', 'PROCESSED', 'READY', 'FAILED', 'DELETED', name='documentstatus'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
@@ -104,7 +104,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_credentials_user_id'), 'credentials', ['user_id'], unique=False)
     op.create_table('document_chunk',
     sa.Column('chunk_id', sa.UUID(), nullable=False),
-    sa.Column('document_id', sa.UUID(), nullable=True),
+    sa.Column('document_id', sa.UUID(), nullable=False),
     sa.Column('chunk_index', sa.Integer(), nullable=False),
     sa.Column('content', sa.Text(), nullable=False),
     sa.Column('token_count', sa.Integer(), server_default='0', nullable=False),
@@ -121,24 +121,25 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('chunk_id'),
     sa.UniqueConstraint('document_id', 'chunk_index', name='uq_document_chunk_index')
     )
+    op.create_index('ix_chunk_chunk_hash', 'document_chunk', ['chunk_hash'], unique=False)
     op.create_index('ix_chunk_created_at', 'document_chunk', ['created_at'], unique=False)
     op.create_index('ix_chunk_document_order', 'document_chunk', ['document_id', 'chunk_index'], unique=False)
+    op.create_index('ix_chunk_neo4j_node_id', 'document_chunk', ['neo4j_node_id'], unique=False)
     op.create_index('ix_chunk_page_number', 'document_chunk', ['page_number'], unique=False)
+    op.create_index('ix_chunk_qdrant_point_id', 'document_chunk', ['qdrant_point_id'], unique=False)
     op.create_index('ix_chunk_section_title', 'document_chunk', ['section_title'], unique=False)
-    op.create_index(op.f('ix_document_chunk_chunk_hash'), 'document_chunk', ['chunk_hash'], unique=False)
     op.create_index(op.f('ix_document_chunk_chunk_id'), 'document_chunk', ['chunk_id'], unique=False)
     op.create_index(op.f('ix_document_chunk_document_id'), 'document_chunk', ['document_id'], unique=False)
-    op.create_index(op.f('ix_document_chunk_neo4j_node_id'), 'document_chunk', ['neo4j_node_id'], unique=False)
-    op.create_index(op.f('ix_document_chunk_qdrant_point_id'), 'document_chunk', ['qdrant_point_id'], unique=False)
     op.create_table('ingestion_job',
     sa.Column('job_id', sa.UUID(), nullable=False),
-    sa.Column('document_id', sa.UUID(), nullable=True),
+    sa.Column('document_id', sa.UUID(), nullable=False),
     sa.Column('workflow_id', sa.String(length=255), nullable=True),
-    sa.Column('workflow_run_id', sa.String(length=255), nullable=False),
+    sa.Column('workflow_run_id', sa.String(length=255), nullable=True),
     sa.Column('current_stage', sa.Enum('DOWNLOAD', 'PARSING', 'CHUNKING', 'EMBEDDING', 'GRAPH_BUILDING', 'EVALUATION', name='ingestionstage'), nullable=True),
-    sa.Column('status', sa.Enum('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', name='processingstatus'), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', name='processingstatus'), nullable=False),
     sa.Column('attempt_count', sa.BigInteger(), server_default='0', nullable=False),
     sa.Column('error_message', sa.Text(), nullable=True),
+    sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
@@ -152,6 +153,7 @@ def upgrade() -> None:
     op.create_index('ix_job_attempt_count', 'ingestion_job', ['attempt_count'], unique=False)
     op.create_index('ix_job_stage', 'ingestion_job', ['current_stage'], unique=False)
     op.create_index('ix_job_status', 'ingestion_job', ['status'], unique=False)
+    op.create_index('ix_job_workflow_id', 'ingestion_job', ['workflow_id'], unique=False)
     op.create_index('ix_job_workflow_run_id', 'ingestion_job', ['workflow_run_id'], unique=False)
     # ### end Alembic commands ###
 
@@ -160,21 +162,22 @@ def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index('ix_job_workflow_run_id', table_name='ingestion_job')
+    op.drop_index('ix_job_workflow_id', table_name='ingestion_job')
     op.drop_index('ix_job_status', table_name='ingestion_job')
     op.drop_index('ix_job_stage', table_name='ingestion_job')
     op.drop_index('ix_job_attempt_count', table_name='ingestion_job')
     op.drop_index(op.f('ix_ingestion_job_job_id'), table_name='ingestion_job')
     op.drop_index(op.f('ix_ingestion_job_document_id'), table_name='ingestion_job')
     op.drop_table('ingestion_job')
-    op.drop_index(op.f('ix_document_chunk_qdrant_point_id'), table_name='document_chunk')
-    op.drop_index(op.f('ix_document_chunk_neo4j_node_id'), table_name='document_chunk')
     op.drop_index(op.f('ix_document_chunk_document_id'), table_name='document_chunk')
     op.drop_index(op.f('ix_document_chunk_chunk_id'), table_name='document_chunk')
-    op.drop_index(op.f('ix_document_chunk_chunk_hash'), table_name='document_chunk')
     op.drop_index('ix_chunk_section_title', table_name='document_chunk')
+    op.drop_index('ix_chunk_qdrant_point_id', table_name='document_chunk')
     op.drop_index('ix_chunk_page_number', table_name='document_chunk')
+    op.drop_index('ix_chunk_neo4j_node_id', table_name='document_chunk')
     op.drop_index('ix_chunk_document_order', table_name='document_chunk')
     op.drop_index('ix_chunk_created_at', table_name='document_chunk')
+    op.drop_index('ix_chunk_chunk_hash', table_name='document_chunk')
     op.drop_table('document_chunk')
     op.drop_index(op.f('ix_credentials_user_id'), table_name='credentials')
     op.drop_index('ix_credentials_status', table_name='credentials')
