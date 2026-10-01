@@ -4,14 +4,10 @@ from typing import Any
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-# Import activity, passing it through the sandbox without reloading the module
 with workflow.unsafe.imports_passed_through():
     from src.infrastructure.workflow_execution.temporalio.activities import (
-        create_ingestion_job_activity,
-        process_document_activity,
-        say_hello,
-        update_document_activity,
-        update_ingestion_job_activity,
+        IngestFileActivities,
+        say_hello,  # Additional standalone function
     )
 
 """ Workflows are used to onfigure and organise the execution activities."""
@@ -31,27 +27,40 @@ class DocumentIngestionWorkflow:
     @workflow.run
     async def run(self, payload: dict[str, Any]) -> str:
         document_id = payload["document_id"]
+        bucket_name = payload.get("bucket", "default-bucket")
+
         workflow.logger.info(
             "Starting durable ingestion orchestration for %s", document_id
         )
 
-        # 1. Update DB status
+        # Helper to ensure enums are serialized as strings
+        doc_type_val = payload.get("document_type", "UNKNOWN")
+        if hasattr(doc_type_val, "value"):
+            doc_type_val = doc_type_val.value
+
+        # 1. Update DB status to UPLOADED
         await workflow.execute_activity(
-            update_document_activity,
-            args=[document_id, "UPLOADED"],
+            IngestFileActivities.update_document_activity,
+            args=[
+                document_id,
+                payload.get("size_bytes", 0),
+                doc_type_val,
+                "UPLOADED",
+                bucket_name,
+            ],
             schedule_to_close_timeout=timedelta(seconds=30),
         )
 
         # 2. Create Ingestion Job record in DB
         job_id = await workflow.execute_activity(
-            create_ingestion_job_activity,
+            IngestFileActivities.create_ingestion_job_activity,
             args=[document_id],
             schedule_to_close_timeout=timedelta(seconds=30),
         )
 
-        # 3. Execute Imgestion Job (MinIO download, chunking, embedding, compression)
-        await workflow.execute_activity(
-            process_document_activity,
+        # 3. Execute Ingestion Job
+        processing_result = await workflow.execute_activity(
+            IngestFileActivities.process_document_activity,
             args=[payload],
             retry_policy=RetryPolicy(
                 initial_interval=timedelta(minutes=1),
@@ -60,18 +69,26 @@ class DocumentIngestionWorkflow:
                 maximum_interval=timedelta(minutes=5),
             ),
             schedule_to_close_timeout=timedelta(minutes=30),
+            # CRITICAL SOTA: Must be set when activity calls activity.heartbeat()
+            heartbeat_timeout=timedelta(seconds=15),
         )
 
-        # 4. Update DB document status to COMPLETED
+        # 4. Update DB document status to PROCESSED
         await workflow.execute_activity(
-            update_document_activity,
-            args=[document_id, "PROCESSED"],
+            IngestFileActivities.update_document_activity,
+            args=[
+                document_id,
+                payload.get("size_bytes", 0),
+                doc_type_val,
+                "PROCESSED",
+                bucket_name,
+            ],
             schedule_to_close_timeout=timedelta(seconds=30),
         )
 
-        # 4. Update DB job status to COMPLETED
+        # 5. Update DB job status to PROCESSED
         await workflow.execute_activity(
-            update_ingestion_job_activity,
+            IngestFileActivities.update_ingestion_job_activity,
             args=[job_id, "PROCESSED"],
             schedule_to_close_timeout=timedelta(seconds=30),
         )
