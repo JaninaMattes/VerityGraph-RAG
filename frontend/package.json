@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "brace-expansion": "^5.0.9",
+    "brace-expansion": "^5.0.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
