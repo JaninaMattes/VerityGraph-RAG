@@ -5,7 +5,7 @@ from uuid import UUID
 
 from src.domain.documents.dataclasses import DocumentChecksum, StorageKey, StoredFile
 from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageProvider
+from src.shared.enums.storage import StorageType
 
 
 class DocumentEntity:
@@ -27,7 +27,7 @@ class DocumentEntity:
         language: LanguageType | None = None,
         bucket_name: str | None = None,
         storage_key: StorageKey,
-        storage_provider: StorageProvider | None = None,
+        storage_provider: StorageType | None = None,
         version_id: str | None = None,
         etag: str | None = None,
         checksum: DocumentChecksum | None = None,
