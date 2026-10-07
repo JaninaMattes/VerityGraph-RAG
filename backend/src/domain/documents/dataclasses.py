@@ -5,7 +5,7 @@ from hashlib import sha256
 from uuid import UUID
 
 from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageProvider
+from src.shared.enums.storage import StorageType
 
 
 @dataclass(slots=True, frozen=True)
@@ -87,7 +87,7 @@ class Document:
     mime_type: str
     size_bytes: int
     bucket_name: str
-    storage_provider: StorageProvider
+    storage_provider: StorageType
     status: DocumentStatus
     created_at: datetime
     updated_at: datetime

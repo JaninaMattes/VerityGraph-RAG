@@ -8,8 +8,8 @@ from src.domain.documents.dataclasses import (
     StoredFile,
 )
 from src.infrastructure.storage.provider import StorageProvider
-from src.shared.core.logger import get_logger
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import (
     AccessDeniedException,
     ObjectNotFoundException,
     StorageOperationException,

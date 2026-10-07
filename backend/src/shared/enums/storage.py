@@ -1,8 +1,8 @@
 from enum import StrEnum
 
 
-class StorageProvider(StrEnum):
+class StorageType(StrEnum):
     MINIO = "minio"
-    S3 = "s3"
+    AWS = "aws"
     AZURE = "azure"
     LOCAL = "local"

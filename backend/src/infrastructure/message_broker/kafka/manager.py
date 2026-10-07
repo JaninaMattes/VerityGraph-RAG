@@ -1,3 +1,5 @@
+# src/infrastructure/message_broker/kafka/manager.py
+
 import asyncio
 import json
 from typing import Any
@@ -11,8 +13,8 @@ from aiokafka.errors import (
 from temporalio.client import Client
 
 from src.infrastructure.message_broker.provider import EventHandler
-from src.shared.core.logger import get_logger
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import (
     AIOKafkaConsumerAuthException,
     AIOKafkaConsumerException,
     AIOKafkaConsumerOffsetException,
@@ -65,7 +67,9 @@ class KafkaEventManager:
             )
             await self.consumer.start()  # Connect to Kafka KRaft cluster
             self._is_running = True
-            logger.info(f"Kafka consumer started. Spawning {self.num_workers} workers")
+            logger.info(
+                "Kafka consumer started. Spawning %s workers.", self.num_workers
+            )
 
             # Start multiple worker tasks for parallel message processing.
             for idx in range(self.num_workers):
@@ -73,7 +77,7 @@ class KafkaEventManager:
                 self.tasks.append(task)
 
         except KafkaConnectionError:
-            logger.exception("Error raised when connecting to AIOKafkaConsumer.")
+            logger.exception("Failed to connect and start AIOKafkaConsumer.")
             raise
 
     async def _consume(self, worker_id) -> None:
@@ -90,31 +94,15 @@ class KafkaEventManager:
                     # Fetch one batch of messages from the consumer.
                     # (timeout_ms defines ms spent waiting if data is not available in the buffer)
                     data = await self.consumer.getmany(timeout_ms=1000, max_records=10)
-                    for tp, messages in data.items():
-                        topic = tp.topic
-                        partition = tp.partition
-                        logger.info(
-                            "Worker %s received event from topic %s: partitions %s",
-                            worker_id,
-                            topic,
-                            partition,
-                        )
+                    for messages in data.values():
                         for message in messages:
                             try:
-                                # TODO: Debugging Process messages
-                                logger.debug(
-                                    "Messages received with offset: %s, key: %s, value: %s",
-                                    message.offset,
-                                    message.key,
-                                    message.value,
-                                )
                                 await self._process_message(message)
                             except Exception:
                                 logger.exception(
-                                    f"Handler failed for offset {message.offset}. Sending to DLQ."
+                                    "Handler failed to process message for offset %s.",
+                                    message.offset,
                                 )
-                                # Log and send to DLQ. Do not crash the worker.
-                                await self._send_to_dlq(message)
 
                     # Commit offsets to Kafka after the batch is processed
                     if data:
@@ -124,53 +112,76 @@ class KafkaEventManager:
                         await asyncio.sleep(1)  # idle
 
                 except asyncio.CancelledError:
-                    logger.warning("The consumer worker %s was cancelled.", worker_id)
+                    logger.warning(
+                        "The Kafka consumer worker %s was cancelled.", worker_id
+                    )
                     raise
                 except TopicAuthorizationFailedError as exc:
                     logger.exception(
-                        "Kafka consumer worker %s failed with authorization error. The Kafka topic requires authorisation.",
+                        "The Kafka consumer worker %s failed with authorization error. The Kafka topic requires authorisation.",
                         worker_id,
                     )
                     topics = await self.consumer.topics()
                     raise AIOKafkaConsumerAuthException(topics) from exc
                 except OffsetOutOfRangeError as exc:
                     logger.exception(
-                        "Kafka consumer worker %s failed with offset out of range error. The 'auto_offset_reset' policy has not been set.",
+                        "The Kafka consumer worker %s failed with an offset out of range error. The 'auto_offset_reset' policy has not been set.",
                         worker_id,
                     )
                     raise AIOKafkaConsumerOffsetException() from exc
 
         except Exception as exc:
             logger.exception(
-                "An error occurred while fetching messages with consumer worker %s from the assigned topics or paritions.",
+                "An error occurred while fetching messages with the Kafka consumer worker %s from the assigned topics or paritions.",
                 worker_id,
             )
             raise AIOKafkaConsumerException(
                 "An error occurred while fetching messages from Kafka."
             ) from exc
         finally:
-            logger.info("The consumer worker %s is shutting down.", worker_id)
+            logger.info(
+                "The Kafka consumer worker %s has finished processing and is shutting down.",
+                worker_id,
+            )
 
     async def _process_message(self, message: Any) -> None:
-        event_type = message.value.get("EventName", "UnknownEvent")
-        handler = self.event_handlers.get(event_type)
+        """MinIO S3 sends a batch of records which are processed and routed one by one."""
+        records = message.value.get("Records", [])
 
-        if handler:
-            try:
-                await handler.handle(message.value)
-            except EventHandlerException:
-                logger.exception("Error in handler for event type: %s.", event_type)
-        else:
-            logger.exception("No handler registered for event type: %s.", event_type)
-            raise EventHandlerNotRegisterdException(event_type)
+        if not records:
+            logger.warning(
+                "Mallformed message! Received Kafka message with empty 'Records' array."
+            )
+            return
 
-    async def _send_to_dlq(self, message: Any) -> None:
-        logger.exception(
+        for record in records:
+            event_type = record.get("eventName", "unknownEvent")
+            handler = self.event_handlers.get(event_type)
+
+            if handler:
+                try:
+                    await handler.handle(record)
+                except EventHandlerException:
+                    logger.exception(
+                        "Handler failed for event: %s. Sending to DLQ.", event_type
+                    )
+                    # Log and send to DLQ. Do not crash the worker.
+                    await self._send_to_dlq(message, record)
+            else:
+                logger.exception(
+                    "No handler registered for event type: %s. Skipping this record.",
+                    event_type,
+                )
+                raise EventHandlerNotRegisterdException(event_type)
+
+    async def _send_to_dlq(self, message: Any, record: Any) -> None:
+        logger.warning(
             f"DLQ Placeholder: Message at offset {message.offset} failed processing."
         )
 
     async def stop(self) -> None:
         logger.info("Stopping Kafka event manager....")
+
         self._is_running = False
         for task in self.tasks:
             task.cancel()

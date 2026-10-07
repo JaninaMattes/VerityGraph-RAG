@@ -1,3 +1,5 @@
+# src/infrastructure/message_broker/kafka/worker.py
+
 import asyncio
 import signal
 import sys
@@ -5,26 +7,36 @@ import sys
 from temporalio.client import Client
 from temporalio.worker import Worker
 
+from src.infrastructure.database.postgres.engine import create_async_db_engine
+from src.infrastructure.database.postgres.session import create_session_factory
 from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
+from src.infrastructure.storage.client import create_storage_client
+from src.infrastructure.storage.service import create_storage_service
 from src.infrastructure.workflow_execution.temporalio.activities import (
-    create_ingestion_job_activity,
-    process_document_activity,
-    update_document_activity,
-    update_ingestion_job_activity,
+    IngestFileActivities,
 )
 from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
 )
-from src.shared.core.config import get_settings
-from src.shared.core.logger import get_logger
+from src.libs.core.config import get_settings
+from src.libs.core.logger import get_logger
 
 logger = get_logger("kafka.run_worker")
 
 
-async def main() -> None:
+async def main(
+    temporal_client: Client | None = None,  # Optional
+) -> None:
     logger.info("Starting Background Kafka Worker...")
     settings = get_settings()
+
+    # Initialize isolated infrastructure for the worker
+    db_engine = create_async_db_engine(settings)
+    session_factory = create_session_factory(db_engine)
+
+    minio_client = create_storage_client(settings)
+    minio_storage = create_storage_service(minio_client, settings)
 
     # Connect to Temporal
     try:
@@ -36,16 +48,21 @@ async def main() -> None:
         logger.exception("Failed to connect to Temporal server. Exiting.")
         sys.exit(1)
 
-    # Run the worker on the given task queue
+    # 2. Pass the factory to the activities
+    ingestion_job_activities = IngestFileActivities(
+        session_factory=session_factory,
+        storage=minio_storage,
+    )
+    # 3. Create a Temporal Worker
     temporal_worker = Worker(
         temporal_client,
         task_queue=settings.temporal_task_queue,
         workflows=[DocumentIngestionWorkflow],
         activities=[
-            create_ingestion_job_activity,
-            update_document_activity,
-            update_ingestion_job_activity,
-            process_document_activity,
+            ingestion_job_activities.update_document_activity,
+            ingestion_job_activities.create_ingestion_job_activity,
+            ingestion_job_activities.process_document_activity,
+            ingestion_job_activities.update_ingestion_job_activity,
         ],
     )
     # Run Temporal Worker as non-blocking background task
@@ -97,7 +114,7 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
 
-    # Wait until Docker or a user sends a termination signal
+    # Wait until termination signal is sent
     await stop_event.wait()
 
     # Stop Kafka first to freeze incoming traffic

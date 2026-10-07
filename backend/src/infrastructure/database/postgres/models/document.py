@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
 from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageProvider
+from src.shared.enums.storage import StorageType
 
 if typing.TYPE_CHECKING:
     from .chunk import DocumentChunk
@@ -50,8 +50,8 @@ class Document(Base):
     )
     bucket_name: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(Text)
-    storage_provider: Mapped[StorageProvider | None] = mapped_column(
-        Enum(StorageProvider, name="storageprovider", native_enum=True)
+    storage_provider: Mapped[StorageType | None] = mapped_column(
+        Enum(StorageType, name="storagetype", native_enum=True)
     )
 
     version_id: Mapped[str | None] = mapped_column(String(255))
