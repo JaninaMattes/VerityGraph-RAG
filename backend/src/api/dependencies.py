@@ -1,10 +1,10 @@
-import base64
+# src/api/dependencies.py
+
 import uuid
 from typing import Annotated
 
 from fastapi import Depends
 from minio import Minio
-from minio.sse import SseCustomerKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.documents.service import DocumentService
@@ -23,41 +23,40 @@ from src.infrastructure.database.postgres.repositories.user import (
     PostgresUserRepository,
 )
 from src.infrastructure.database.postgres.session import get_db_session
+from src.infrastructure.storage.client import create_storage_client
 from src.infrastructure.storage.minio.storage import MinioStorage
-from src.shared.core.config import Settings, get_settings
-from src.shared.core.logger import get_logger
+from src.infrastructure.storage.service import create_storage_service
+from src.libs.core.config import Settings, get_settings
+from src.libs.core.logger import get_logger
 
 logger = get_logger("api.dependencies")
+
 
 # Reuse settings dependency across sub-providers
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
+# TODO: NEEDS TO BE REPLACED WITH A REAL AUTH PROVIDER
+async def get_current_tenant_id(settings: SettingsDep) -> uuid.UUID:
+    """
+    MVP Dependency: Returns a hardcoded tenant ID.
+    TODO: decode the JWT and extract the tenant_id from there.
+    """
+    return uuid.UUID(settings.dev_tenant_id)
+
 
 # Provider wrapping the global client instance for FastAPI dependency integration
 def get_minio_client(settings: SettingsDep) -> Minio:
-    return Minio(
-        endpoint=settings.minio_url,
-        access_key=settings.minio_root_user.get_secret_value(),
-        secret_key=settings.minio_root_password.get_secret_value(),
-        region=settings.minio_region,
-        secure=settings.minio_secure,
-    )
+    return create_storage_client(settings)
 
 
 # Reuse dependency across sub-providers
 MinioClientDep = Annotated[Minio, Depends(get_minio_client)]
 
-# TODO: Remove, just for dependency provider testing
-DEV_TENANT_ID = uuid.UUID("b683cc7b-900f-4d17-b41d-39aa04bf2a54")
 
+def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
+    return create_storage_service(client, settings)
 
-async def get_current_tenant_id() -> uuid.UUID:
-    """
-    MVP Dependency: Returns a hardcoded tenant ID.
-    TODO: decode the JWT and extract the tenant_id from there.
-    """
-    return DEV_TENANT_ID
 
 # Dependency provider factories
 def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
@@ -71,18 +70,9 @@ def get_user_repository(session: DbSessionDep) -> PostgresUserRepository:
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
 
+
 def get_job_repository(session: DbSessionDep) -> PostgresIngestionJobRepository:
     return PostgresIngestionJobRepository(session=session)
-
-def get_minio_provider(settings: SettingsDep, client: MinioClientDep) -> MinioStorage:
-    storage = MinioStorage(
-        client=client,
-        bucket_name=settings.minio_default_bucket,
-        sse_key=SseCustomerKey(
-            key=base64.b64decode(settings.minio_sse_customer_key.get_secret_value())
-        ),  # string to byte code
-    )
-    return storage
 
 
 # Define dependencies for services
