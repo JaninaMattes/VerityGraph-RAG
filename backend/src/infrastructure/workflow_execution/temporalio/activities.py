@@ -1,3 +1,5 @@
+# src/infrastructure/workflow_execution/temporalio/activities.py
+
 import asyncio
 from typing import Any
 
@@ -12,14 +14,8 @@ from src.infrastructure.database.postgres.repositories.document import (
 )
 from src.infrastructure.storage.provider import StorageProvider
 from src.libs.core.logger import get_logger
-from src.libs.enums.document import DocumentStatus, DocumentType
-from src.libs.enums.storage import StorageType
 
 logger = get_logger("infra.temporalio.activities")
-
-@activity.defn
-async def say_hello(name: str) -> str:
-    return f"Hello, {name}!"
 
 
 class IngestFileActivities:
@@ -36,10 +32,10 @@ class IngestFileActivities:
         self,
         document_id: str,
         size_bytes: int,
-        document_type: DocumentType,
-        status: DocumentStatus,
+        document_type: str,
+        status: str,
         bucket_name: str,
-        storage_type: StorageType,
+        storage_type: str,
     ) -> None:
         activity.logger.info("Updating document %s to status %s.", document_id, status)
         info = activity.info()
@@ -56,14 +52,11 @@ class IngestFileActivities:
                 # await session.commit()
                 await asyncio.sleep(0.1)  # Simulate DB call
             except Exception as exc:
-                # await session.rollback()
                 raise ApplicationError(
                     f"Failed to update document with id {document_id}.",
                     non_retryable=False,
                     type="DatabaseFailure",
                 ) from exc
-            finally:
-                await session.close()
 
     @activity.defn
     async def create_ingestion_job_activity(self, document_id: str) -> str:
@@ -83,19 +76,17 @@ class IngestFileActivities:
                 await asyncio.sleep(0.1)  # Simulate DB call
                 return "mock-ingestion-job-id-12345678"
             except Exception as exc:
-                # await session.rollback()
                 raise ApplicationError(
                     f"Failed to create ingestion job for document with id {document_id}.",
                     non_retryable=False,
                     type="DatabaseFailure",
                 ) from exc
-            finally:
-                await session.close()
 
     @activity.defn
     async def process_document_activity(
         self, payload: dict[str, Any]
     ) -> dict[str, Any]:
+        """Process a document."""
         # Ensure Idempotency
         info = activity.info()
         idempotency_key = f"{info.workflow_run_id}-{info.activity_id}"
@@ -105,6 +96,11 @@ class IngestFileActivities:
         activity.logger.info(
             "Processing document %s from bucket %s.", document_id, bucket
         )
+        start_chunk = 0
+        if activity.info().heartbeat_details:
+            last_detail = activity.info().heartbeat_details[-1]
+            start_chunk = last_detail.get("processed_chunks", 0)
+            activity.logger.info(f"Resuming from chunk {start_chunk} due to retry.")
 
         try:
             # 1. Download from MinIO (StorageProvider should handle retries/timeouts internally)
@@ -115,15 +111,15 @@ class IngestFileActivities:
             # Use heartbeats for long-running activities to prevent timeouts
             # and allow resumption from the last successful step if the worker crashes.
             total_chunks = 5
-            for i in range(total_chunks):
+            for i in range(start_chunk, total_chunks):
                 activity.logger.info(
                     f"Processing chunk {i + 1}/{total_chunks} for {document_id}"
                 )
                 await asyncio.sleep(1)  # Simulate chunk processing
 
-                # Heartbeat allows Temporal to know the activity is still alive
+                # TODO: Fix Heartbeat allows Temporal to know the activity is still alive
                 # Can be used to resume if the activity is retried
-                activity.heartbeat(f"Processed {i + 1}/{total_chunks} chunks")
+                activity.heartbeat({"processed_chunks": i + 1})
 
             # 3. Return results to the Workflow (do NOT save final state to DB here;
             # let the Workflow call update_document_activity to ensure it only happens
@@ -140,7 +136,7 @@ class IngestFileActivities:
             raise ApplicationError(
                 f"Failed to process document with id {document_id}: {exc}",
                 non_retryable=is_non_retryable,
-                type="IngestionJobFailure",
+                type="ProcessingFailure",
             ) from exc
 
     @activity.defn
@@ -160,11 +156,8 @@ class IngestFileActivities:
                 # await session.commit()
                 await asyncio.sleep(0.1)  # Simulate DB call
             except Exception as exc:
-                # await session.rollback()
                 raise ApplicationError(
                     f"Failed to update ingestion job status to {status} for job with id {job_id}.",
                     non_retryable=False,
                     type="DatabaseFailure",
                 ) from exc
-            finally:
-                await session.close()
