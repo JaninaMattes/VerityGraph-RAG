@@ -6,8 +6,8 @@ from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageType
+from src.libs.enums.document import DocumentStatus, DocumentType, LanguageType
+from src.libs.enums.storage import StorageType
 
 if typing.TYPE_CHECKING:
     from .chunk import DocumentChunk
@@ -50,7 +50,7 @@ class Document(Base):
     )
     bucket_name: Mapped[str | None] = mapped_column(Text)
     storage_key: Mapped[str] = mapped_column(Text)
-    storage_provider: Mapped[StorageType | None] = mapped_column(
+    storage_type: Mapped[StorageType | None] = mapped_column(
         Enum(StorageType, name="storagetype", native_enum=True)
     )
 

@@ -15,7 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums.credentials import CredentialStatus
+from src.libs.enums.credentials import CredentialStatus
 
 if typing.TYPE_CHECKING:
     from .user import User  # noqa: TC004

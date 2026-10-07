@@ -8,8 +8,8 @@ from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
 from src.infrastructure.database.postgres.mapper.document import DocumentMapper
 from src.infrastructure.database.postgres.models.document import Document
-from src.shared.core.logger import get_logger
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import (
     DatabaseInternalException,
     DatabaseOperationException,
     DocumentNotFoundException,

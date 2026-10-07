@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from src.domain.documents.dataclasses import DocumentChecksum, StorageKey, StoredFile
-from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageType
+from src.libs.enums.document import DocumentStatus, DocumentType, LanguageType
+from src.libs.enums.storage import StorageType
 
 
 class DocumentEntity:
@@ -27,7 +27,7 @@ class DocumentEntity:
         language: LanguageType | None = None,
         bucket_name: str | None = None,
         storage_key: StorageKey,
-        storage_provider: StorageType | None = None,
+        storage_type: StorageType | None = None,
         version_id: str | None = None,
         etag: str | None = None,
         checksum: DocumentChecksum | None = None,
@@ -50,7 +50,7 @@ class DocumentEntity:
 
         self.storage_key = storage_key
         self.bucket_name = bucket_name
-        self.storage_provider = storage_provider
+        self.storage_type = storage_type
         self.version_id = version_id
         self.etag = etag
 

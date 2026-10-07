@@ -10,8 +10,8 @@ from src.infrastructure.database.postgres.mapper.ingestionjob import (
     IngestionJobMapper,
 )
 from src.infrastructure.database.postgres.models.ingestionjob import IngestionJob
-from src.shared.core.logger import get_logger
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import (
     DatabaseInternalException,
     DatabaseOperationException,
     IngestionJobNotFoundException,

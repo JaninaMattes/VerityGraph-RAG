@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, status
 from src.api.dependencies import get_current_tenant_id, get_user_service
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.service import UserService
-from src.shared.core.logger import get_logger
-from src.shared.schemas.user import (
+from src.libs.core.logger import get_logger
+from src.libs.schemas.user import (
     RegisterRequest,
     UpdateUserRequest,
     UserResponse,

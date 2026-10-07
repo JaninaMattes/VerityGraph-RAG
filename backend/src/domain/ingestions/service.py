@@ -9,9 +9,9 @@ from src.domain.ingestions.dataclasses import (
 )
 from src.domain.ingestions.entities import IngestionJobEntity
 from src.domain.ingestions.repository import IngestionJobRepository
-from src.shared.core.logger import get_logger
-from src.shared.enums.ingestionjob import ProcessingStatus
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.enums.ingestionjob import ProcessingStatus
+from src.libs.exceptions.exceptions import (
     DatabaseException,
     JobServiceException,
     NotFoundException,

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from src.shared.enums.ingestionjob import IngestionStage, ProcessingStatus
+from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 
 class IngestionJobEntity:

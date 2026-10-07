@@ -7,7 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from src.infrastructure.database.postgres.base import Base
-from src.shared.core.config import get_settings
+from src.libs.core.config import get_settings
 
 settings = get_settings()
 # this is the Alembic Config object, which provides

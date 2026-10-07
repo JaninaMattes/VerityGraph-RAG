@@ -4,14 +4,14 @@ from datetime import UTC, datetime
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
-from src.shared.core.logger import get_logger
-from src.shared.enums.user import UserRole, UserStatus
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.enums.user import UserRole, UserStatus
+from src.libs.exceptions.exceptions import (
     DatabaseException,
     NotFoundException,
     UserServiceException,
 )
-from src.shared.schemas.user import UserResponse
+from src.libs.schemas.user import UserResponse
 
 logger = get_logger("api.domain.user.service")
 

@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, status
 
 from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
-from src.shared.core.logger import get_logger
-from src.shared.schemas.document import (
+from src.libs.core.logger import get_logger
+from src.libs.schemas.document import (
     CreateUploadRequest,
     PresignedURLResponse,
 )
