@@ -10,9 +10,9 @@ from src.libs.enums.document import DocumentStatus, DocumentType, LanguageType
 from src.libs.enums.storage import StorageType
 
 if typing.TYPE_CHECKING:
-    from .chunk import DocumentChunk
-    from .ingestionjob import IngestionJob
-    from .tenant import Tenant
+    from .chunk import DocumentChunk  # noqa: TC004
+    from .ingestionjob import IngestionJob  # noqa: TC004
+    from .tenant import Tenant  # noqa: TC004
 
 
 class Document(Base):
