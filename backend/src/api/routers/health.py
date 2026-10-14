@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from src.api.dependencies import get_settings
-from src.shared.core.config import Settings
-from src.shared.core.logger import get_logger
-from src.shared.schemas.health import AppHealthResponse
+from src.libs.core.config import Settings
+from src.libs.core.logger import get_logger
+from src.libs.schemas.health import AppHealthResponse
 
 logger = get_logger("api.routers.health")
 

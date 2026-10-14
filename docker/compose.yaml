@@ -109,7 +109,7 @@ services:
       start_period: 10s
 
   # =========================================================================
-  # 5. FILE STORAGE (MinIO S3)
+  # 5. FILE STORAGE (MinIO S3) - Optional for full offline dev
   # =========================================================================
   minio:
     image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z

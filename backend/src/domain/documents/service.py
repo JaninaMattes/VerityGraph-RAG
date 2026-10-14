@@ -7,15 +7,15 @@ from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
 from src.infrastructure.storage.provider import StorageProvider
-from src.shared.core.logger import get_logger
-from src.shared.enums.document import DocumentStatus
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.enums.document import DocumentStatus
+from src.libs.exceptions.exceptions import (
     DatabaseException,
     DocumentServiceException,
     NotFoundException,
     StorageException,
 )
-from src.shared.schemas.document import (
+from src.libs.schemas.document import (
     DocumentStatusResponse,
     PresignedURLResponse,
 )

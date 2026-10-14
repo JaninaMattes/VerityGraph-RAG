@@ -8,8 +8,8 @@ from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
 from src.infrastructure.database.postgres.mapper.user import UserMapper
 from src.infrastructure.database.postgres.models.user import User
-from src.shared.core.logger import get_logger
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import (
     DatabaseInternalException,
     DatabaseOperationException,
     UserNotFoundException,

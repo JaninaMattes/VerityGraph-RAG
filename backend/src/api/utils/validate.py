@@ -1,7 +1,7 @@
 from fastapi import HTTPException, UploadFile
 
-from src.shared.core.logger import get_logger
-from src.shared.types import SUPPORTED_DOCUMENTS
+from src.libs.core.logger import get_logger
+from src.libs.types import SUPPORTED_DOCUMENTS
 
 logger = get_logger("api.routers.utils.validate")
 

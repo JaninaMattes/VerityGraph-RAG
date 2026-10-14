@@ -1,3 +1,5 @@
+# src/infrastructure/database/postgres/base.py
+
 from sqlalchemy.orm import DeclarativeBase
 
 

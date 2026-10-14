@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, status
 from src.api.dependencies import get_current_tenant_id, get_tenant_service
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.service import TenantService
-from src.shared.core.logger import get_logger
-from src.shared.schemas.tenant import (
+from src.libs.core.logger import get_logger
+from src.libs.schemas.tenant import (
     CreateTenantRequest,
     TenantResponse,
     UpdateTenantRequest,
