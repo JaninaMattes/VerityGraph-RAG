@@ -15,6 +15,7 @@ logger = get_logger("kafka.event_handler")
 
 """ Contains MinIO S3 handler for processing the business logic. """
 
+
 class MinioObjectCreatedHandler(EventHandler):
     def __init__(
         self,

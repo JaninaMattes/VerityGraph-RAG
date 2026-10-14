@@ -64,7 +64,7 @@ class TestDocumentAPIEndpoints:
         response = await client.post("/api/v1/documents", json={"namespace": "legal"})
 
         # Assert
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
         error_details = response.json()["detail"]
         assert any(err["loc"] == ["body", "filename"] for err in error_details)
 

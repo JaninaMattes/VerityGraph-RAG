@@ -21,6 +21,7 @@ from src.libs.enums.user import UserRole, UserStatus
 if typing.TYPE_CHECKING:
     from .tenant import Tenant  # noqa: TC004
 
+
 class User(Base):
     __tablename__ = "users"
 
