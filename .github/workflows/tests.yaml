@@ -15,20 +15,23 @@ jobs:
         with:
           python-version-file: "backend/.python-version"
 
-      - name: Install uv
+      - name: Install uv and enable caching
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          # Install a specific version of uv.
           version: "0.12.19"
-
-      - name: Install the project
-        run: uv sync --locked --all-extras --dev
-
-      - name: Enable caching
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
           enable-cache: true
 
+      # Install Temporal CLI for Workflow Tests
+      - name: Install Temporal CLI
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
+
+      # Run the project inside the /backend folder
+      - name: Install the project
+        working-directory: ./backend
+        run: uv sync --locked --all-extras --dev
+
       - name: Run tests
-        # For example, using `pytest`
+        working-directory: ./backend
         run: uv run pytest tests
