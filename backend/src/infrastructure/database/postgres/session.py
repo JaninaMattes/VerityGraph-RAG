@@ -21,7 +21,7 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 # FastAPI Dependency
-async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession]:
     """
     Utilise generator as context manager.
     Yields a database session and ensures proper cleanup.

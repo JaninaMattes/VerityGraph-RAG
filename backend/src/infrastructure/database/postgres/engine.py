@@ -1,6 +1,5 @@
 # src/infrastructure/database/postgres/engine.py
 
-
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     create_async_engine,
