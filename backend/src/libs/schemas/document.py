@@ -10,8 +10,8 @@ from src.libs.enums.document import DocumentStatus
 
 class CreateUploadRequest(BaseModel):
     filename: str
-    content_type: str
     namespace: str = "files"
+    mime_type: str = "application/pdf"
 
 
 class DocumentStatusResponse(BaseModel):
@@ -23,6 +23,7 @@ class PresignedURLResponse(BaseModel):
     document_id: UUID
     url: str
     expires_at: timedelta
+    required_headers: dict[str, str]
 
 
 class DeleteResponse(BaseModel):
