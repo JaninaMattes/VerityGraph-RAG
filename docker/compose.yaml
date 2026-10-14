@@ -1,7 +1,24 @@
 services:
+  # =========================================================================
+  # 1. DATABASE MIGRATIONS 
+  # =========================================================================
+  migrate:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: db-migrate
+    command: alembic upgrade head
+    env_file:
+      - ../backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - service-network
+    restart: "no"
 
   # =========================================================================
-  # 1. APPLICATION LAYER (FASTAPI WEB API)
+  # 2. APPLICATION LAYER (FASTAPI WEB API)
   # =========================================================================
   web-api:
     build:
@@ -15,15 +32,15 @@ services:
     env_file:
       - ../backend/.env
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - service-network
 
   # =========================================================================
-  # 2. TRACK METADATA & SYSTEM STATE (PostgreSQL)
+  # 3. TRACK METADATA & SYSTEM STATE (PostgreSQL)
   # =========================================================================
   postgres:
     image: postgres:16-alpine
@@ -69,7 +86,7 @@ services:
       start_period: 20s
 
   # =========================================================================
-  # 3. CACHE (Redis)
+  # 4. CACHE (Redis)
   # =========================================================================
   redis:
     image: redis:7.2-alpine
@@ -92,10 +109,10 @@ services:
       start_period: 10s
 
   # =========================================================================
-  # 4. BLOB STORAGE (MinIO S3)
+  # 5. FILE STORAGE (MinIO S3)
   # =========================================================================
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-03-12T18-04-18Z
+    image: docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: minio
     depends_on:
       kafka-kraft:
@@ -130,7 +147,7 @@ services:
 
   # Auto-create buckets and attach Kafka notifications on startup
   minio-init-buckets:
-    image: quay.io/minio/mc:RELEASE.2025-03-12T17-29-24Z
+    image: docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     container_name: minio-init-buckets
     depends_on:
       minio:
@@ -140,16 +157,20 @@ services:
     entrypoint: >
       /bin/sh -c "
       sleep 5;
-      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb --ignore-existing dockerminio/${MINIO_DEFAULT_BUCKETS};
-      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete;
+      echo 'Creating MinIO buckets...';
+      /usr/bin/mc alias set dockerminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc admin info dockerminio;
+
+      /usr/bin/mc mb dockerminio/${MINIO_DEFAULT_BUCKETS} --ignore-existing;
+      /usr/bin/mc event add dockerminio/${MINIO_DEFAULT_BUCKETS} arn:minio:sqs::PRIMARY:kafka --event put,delete --ignore-existing;
+      /usr/bin/mc admin config get dockerminio/ notify_kafka;
       exit 0;
       "
     networks:
       - service-network
 
   # =========================================================================
-  # 5. MESSAGE BROKER (Apache Kafka - KRaft Mode)
+  # 6. MESSAGE BROKER (Apache Kafka - KRaft Mode)
   # =========================================================================
   kafka-kraft:
     image: confluentinc/cp-kafka:8.3.1
@@ -201,6 +222,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
+      echo 'Creating Kafka topics...';
       kafka-topics --bootstrap-server kafka-kraft:9092 --create --if-not-exists --topic ${MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY} --partitions 1 --replication-factor 1;
       exit 0;
       "
@@ -226,7 +248,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 6. STATELESS ORCHESTRATION (TEMPORAL.io)
+  # 7. STATELESS ORCHESTRATION (TEMPORAL.io)
   # =========================================================================
   temporal:
     image: temporalio/server:1.32.0
@@ -310,7 +332,7 @@ services:
       - service-network
 
   # =========================================================================
-  # 7. APP BACKGROUND WORKERS
+  # 8. APP BACKGROUND WORKERS
   # =========================================================================
   kafka-consumer:
     build:
@@ -318,7 +340,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: kafka-consumer
     restart: unless-stopped
-    command: python -m src.infrastructure.message_broker.kafka.run_worker
+    command: python -m src.infrastructure.message_broker.kafka.worker
     env_file:
       - ../backend/.env
     depends_on:
@@ -333,17 +355,17 @@ services:
 
 
   # =========================================================================
-  # 8. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
+  # 9. GRAPH DATABASE (Neo4j) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 9. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
+  # 10. VECTOR DATABASE (Qdrant) - REQUIRED FOR GRAPH RAG
   # =========================================================================
 
 
   # =========================================================================
-  # 10. OBSERVABILITY & ANALYTICS
+  # 11. OBSERVABILITY & ANALYTICS
   # =========================================================================  
   pgadmin:
     image: dpage/pgadmin4:9.18.0
@@ -388,7 +410,7 @@ services:
 
 
 # =========================================================================
-# 11. VOLUMES & NETWORKS
+# 12. VOLUMES & NETWORKS
 # =========================================================================
 volumes:
   postgres-data:      

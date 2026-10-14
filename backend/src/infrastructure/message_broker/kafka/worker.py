@@ -1,0 +1,142 @@
+# src/infrastructure/message_broker/kafka/worker.py
+
+import asyncio
+import signal
+import sys
+
+from temporalio.client import Client
+from temporalio.worker import Worker
+
+from src.infrastructure.database.postgres.engine import create_async_db_engine
+from src.infrastructure.database.postgres.session import create_session_factory
+from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
+from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
+from src.infrastructure.storage.client import create_storage_client
+from src.infrastructure.storage.service import create_storage_service
+from src.infrastructure.workflow_execution.temporalio.activities import (
+    IngestFileActivities,
+)
+from src.infrastructure.workflow_execution.temporalio.workflows import (
+    DocumentIngestionWorkflow,
+)
+from src.libs.core.config import get_settings
+from src.libs.core.logger import get_logger
+
+logger = get_logger("kafka.run_worker")
+
+
+async def main(
+    temporal_client: Client | None = None,  # Optional
+) -> None:
+    logger.info("Starting Background Kafka Worker...")
+    settings = get_settings()
+
+    # Initialize isolated infrastructure for the worker
+    db_engine = create_async_db_engine(settings)
+    session_factory = create_session_factory(db_engine)
+
+    minio_client = create_storage_client(settings)
+    minio_storage = create_storage_service(minio_client, settings)
+
+    # Connect to Temporal
+    try:
+        temporal_client = await Client.connect(
+            settings.temporal_url, namespace=settings.temporal_default_namespace
+        )
+        logger.info("Connected to Temporal server.")
+    except Exception:
+        logger.exception("Failed to connect to Temporal server. Exiting.")
+        sys.exit(1)
+
+    # 2. Pass the factory to the activities
+    ingestion_job_activities = IngestFileActivities(
+        session_factory=session_factory,
+        storage=minio_storage,
+    )
+    # 3. Create a Temporal Worker
+    temporal_worker = Worker(
+        temporal_client,
+        task_queue=settings.temporal_task_queue,
+        workflows=[DocumentIngestionWorkflow],
+        activities=[
+            ingestion_job_activities.update_document_activity,
+            ingestion_job_activities.create_ingestion_job_activity,
+            ingestion_job_activities.process_document_activity,
+            ingestion_job_activities.update_ingestion_job_activity,
+        ],
+    )
+    # Run Temporal Worker as non-blocking background task
+    temporal_worker_task = asyncio.create_task(temporal_worker.run())
+    logger.info(
+        "Temporal Worker started on task queue: %s. ", settings.temporal_task_queue
+    )
+
+    # Initialize Kafka Event Manager and register MinIO object events
+    event_manager = KafkaEventManager(
+        temporal_client,
+        num_workers=2,
+    )
+
+    event_handler = MinioObjectCreatedHandler(
+        temporal_client, temporal_task_queue=settings.temporal_task_queue
+    )
+    event_manager.register_handler("s3:ObjectCreated:Put", event_handler)
+    event_manager.register_handler(
+        "s3:ObjectCreated:CompleteMultipartUpload", event_handler
+    )
+    # event_manager.register_handler("s3:ObjectRemoved:Delete", event_handler)
+    # TODO: Update logic in handler to handle deletes
+
+    # Start Kafka Consumer as non-blocking background task
+    try:
+        kafka_task = asyncio.create_task(
+            event_manager.start(
+                settings.kafka_topics,
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+                group_id=settings.kafka_group_id,
+                enable_auto_commit=settings.kafka_enable_auto_commit,
+                auto_offset_reset=settings.kafka_auto_offset_reset,
+            )
+        )
+
+    except Exception:
+        logger.exception("Failed to start the Kafka Consumer. Exiting the application.")
+        sys.exit(1)
+
+    # Register signal handlers for Docker SIGTERM
+    stop_event = asyncio.Event()
+
+    def signal_handler():
+        logger.info("Shutdown signal received. Stopping worker gracefully.")
+        stop_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    # Wait until termination signal is sent
+    await stop_event.wait()
+
+    # Stop Kafka first to freeze incoming traffic
+    logger.info("Stopping Kafka Consumer...")
+    await event_manager.stop()
+    try:
+        await kafka_task  # Await it to ensure underlying loops break cleanly
+    except Exception:
+        logger.exception("Error while stopping Kafka consumer loop task.")
+
+    # Stop the Temporal Worker
+    logger.info("Stopping Temporal Worker...")
+    temporal_worker_task.cancel()
+    try:
+        await temporal_worker_task
+    except asyncio.CancelledError:
+        pass  # expected during shutdown
+    except Exception:
+        logger.exception("Error while stopping Temporal worker loop task.")
+
+    logger.info("Background Worker shutdown completed successfully.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

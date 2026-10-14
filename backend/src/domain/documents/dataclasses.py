@@ -5,13 +5,13 @@ from hashlib import sha256
 from uuid import UUID
 
 from src.shared.enums.document import DocumentStatus, DocumentType, LanguageType
-from src.shared.enums.storage import StorageProvider
+from src.shared.enums.storage import StorageType
 
 
 @dataclass(slots=True, frozen=True)
 class StorageKey:
     """
-    Canonical object identifier inside blob storage.
+    Canonical object identifier inside S3 storage.
     Follows S3/MinIO best practices for lifecycle management and tenant isolation.
     """
 
@@ -87,7 +87,7 @@ class Document:
     mime_type: str
     size_bytes: int
     bucket_name: str
-    storage_provider: StorageProvider
+    storage_provider: StorageType
     status: DocumentStatus
     created_at: datetime
     updated_at: datetime
