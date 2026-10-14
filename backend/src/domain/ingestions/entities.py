@@ -59,3 +59,9 @@ class IngestionJobEntity:
         self.error_message = error
         self.updated_at = datetime.now(UTC)
         self.finished_at = datetime.now(UTC)
+
+    def mark_cancelled(self, error: str | None = None) -> None:
+        self.status = ProcessingStatus.CANCELLED
+        self.error_message = error
+        self.updated_at = datetime.now(UTC)
+        self.finished_at = datetime.now(UTC)
