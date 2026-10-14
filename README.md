@@ -273,6 +273,7 @@ Project Link: [https://github.com/your_username/repo_name](https://github.com/yo
 
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
+* [SQLAlchemy - ORM Quick Start](https://docs.sqlalchemy.org/en/21/orm/quickstart.html)
 * [Aiokafka - Apache Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
 * [MinIO - Publish Events to Kafka](https://docs.min.io/aistor/administration/bucket-notifications/publish-events-to-kafka/?_gl=1*7nosf2*_up*MQ..*_ga*ODczNDc3ODE0LjE3ODk2MjAwODg.*_ga_EHESQ21MLT*czE3ODk2MjAwODgkbzEkZzAkdDE3ODk2MjAwODgkajYwJGwwJGgw)
 * [MinIO - Kafka Notification Settings](https://docs.min.io/aistor/reference/aistor-server/settings/notifications/kafka/?_gl=1*62ple9*_up*MQ..*_ga*OTM4MjM3MDkyLjE3ODk2MjAzMzQ.*_ga_EHESQ21MLT*czE3ODk2MjAzMzQkbzEkZzAkdDE3ODk2MjAzMzQkajYwJGwwJGgw&tab=kafka-multi-targets-configuration-settings#minio-server-envvar-bucket-notification-kafka)

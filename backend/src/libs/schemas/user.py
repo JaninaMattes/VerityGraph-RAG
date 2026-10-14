@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from src.shared.enums.user import UserStatus
+from src.libs.enums.user import UserStatus
 
 """The schema module provides the building blocks for ..."""
 

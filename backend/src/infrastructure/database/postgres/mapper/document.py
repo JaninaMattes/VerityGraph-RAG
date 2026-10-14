@@ -16,7 +16,7 @@ class DocumentMapper:
             language=entity.language,
             bucket_name=entity.bucket_name,
             storage_key=entity.storage_key.value,  # string
-            storage_provider=entity.storage_provider,
+            storage_type=entity.storage_type,
             version_id=entity.version_id,
             etag=entity.etag,
             checksum=checksum,  # string
@@ -41,7 +41,7 @@ class DocumentMapper:
             language=model.language,
             bucket_name=model.bucket_name,
             storage_key=StorageKey(model.storage_key),  # storage key
-            storage_provider=model.storage_provider,
+            storage_type=model.storage_type,
             version_id=model.version_id,
             etag=model.etag,
             checksum=checksum,

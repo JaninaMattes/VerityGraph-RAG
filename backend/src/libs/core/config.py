@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",  # prevents crash
     )
+
+    # ---------------------------------------------------------
+    # TODO: REMOVE -- JUST FOR DEV
+    # ---------------------------------------------------------
+    dev_tenant_id: str
+
     # ---------------------------------------------------------
     # Application
     # ---------------------------------------------------------

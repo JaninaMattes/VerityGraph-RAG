@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from src.shared.enums.document import DocumentStatus
+from src.libs.enums.document import DocumentStatus
 
 """The schema module provides the building blocks for the application."""
 
