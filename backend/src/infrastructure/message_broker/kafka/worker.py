@@ -30,6 +30,7 @@ logger = get_logger("kafka.run_worker")
     infrastructure elements in the application.
 """
 
+
 async def main() -> None:
     logger.info("Starting Background Kafka Worker...")
     settings = get_settings()
@@ -138,7 +139,6 @@ async def main() -> None:
                 logger.exception("Error while stopping Kafka consumer loop task.")
 
     logger.info("Background Worker shutdown completed successfully.")
-
 
 
 if __name__ == "__main__":

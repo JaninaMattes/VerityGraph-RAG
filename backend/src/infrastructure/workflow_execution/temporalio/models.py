@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 """Temporal only operate with primitives."""
 
+
 class IngestionPayload(BaseModel):
     document_id: str
     tenant_id: str
