@@ -79,6 +79,10 @@ class DocumentEntity:
         self.status = DocumentStatus.UPLOADED
         self.updated_at = datetime.now(UTC)
 
+    def mark_processed(self) -> None:
+        self.status = DocumentStatus.PROCESSED
+        self.updated_at = datetime.now(UTC)
+
     def mark_failed(self) -> None:
         self.status = DocumentStatus.FAILED
         self.updated_at = datetime.now(UTC)

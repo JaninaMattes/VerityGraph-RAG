@@ -14,7 +14,11 @@ class StorageProvider(Protocol):
         raise NotImplementedError("Subclasses must implement create_bucket method")
 
     def create_presigned_url(
-        self, storage_key: StorageKey, expires_at: timedelta, method: str
+        self,
+        storage_key: StorageKey,
+        expires_at: timedelta,
+        method: str,
+        user_metadata: dict[str, str] | None = None,
     ) -> str:
         raise NotImplementedError(
             "Subclasses must implement create_presigned_url method"
@@ -27,4 +31,7 @@ class StorageProvider(Protocol):
         raise NotImplementedError("Subclasses must implement get_obj_metadata method")
 
     def delete_object(self, storage_key: StorageKey) -> None:
+        raise NotImplementedError("Subclasses must implement delete_object method")
+
+    def download_object(self, bucket: str, storage_key: str, file_path: str) -> None:
         raise NotImplementedError("Subclasses must implement delete_object method")

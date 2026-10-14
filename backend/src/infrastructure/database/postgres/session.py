@@ -9,6 +9,7 @@ from src.libs.core.logger import get_logger
 
 logger = get_logger("api.infrastructure.postgres")
 
+
 # Create an async session factory
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(
@@ -21,7 +22,7 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
 
 
 # FastAPI Dependency
-async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession]:
     """
     Utilise generator as context manager.
     Yields a database session and ensures proper cleanup.

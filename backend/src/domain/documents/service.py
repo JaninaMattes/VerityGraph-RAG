@@ -1,22 +1,21 @@
 # src/domain/documents/service.py
+
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from src.domain.documents.dataclasses import StorageKey
-from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
 from src.infrastructure.storage.provider import StorageProvider
 from src.libs.core.logger import get_logger
-from src.libs.enums.document import DocumentStatus
 from src.libs.exceptions.exceptions import (
+    BucketNotFoundException,
     DatabaseException,
     DocumentServiceException,
     NotFoundException,
     StorageException,
 )
 from src.libs.schemas.document import (
-    DocumentStatusResponse,
     PresignedURLResponse,
 )
 
@@ -28,55 +27,76 @@ class DocumentService:
 
     def __init__(
         self,
-        doc_repository: DocumentRepository,
         storage: StorageProvider,
+        doc_repository: DocumentRepository,
     ) -> None:
         self.doc_repository = doc_repository
         self.storage = storage
 
     async def create_upload_url(
         self,
-        filename: str,
-        content_type: str,
         tenant_id: uuid.UUID,  # Injected from settings/dependency
+        filename: str,
         namespace: str = "files",
     ) -> PresignedURLResponse:
         """Create presigned PUT URL to upload file to S3 bucket."""
 
         # Create storage key
         document_id = uuid.uuid4()
-        storage_key = StorageKey.document(document_id=document_id, tenant_id=tenant_id, namespace=namespace)
-        expires_at = timedelta(minutes=30)  # 30 mins expiration
+        storage_key = StorageKey.document(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            namespace=namespace,
+            original_filename=filename,
+        )
+        document_type = (
+            filename.rsplit(".", 1)[-1].upper() if "." in filename else "UNKNOWN"
+        )
+        user_metadata = {
+            "tenant_id": str(tenant_id),
+            "filename": filename,
+            "document_type": document_type,
+        }
 
-        try:
-            # Transaction boundary: Atomic commit to Postgres
-            now = datetime.now(UTC)
-            doc_entity = DocumentEntity(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                filename=filename,
-                mime_type=content_type,
-                storage_key=storage_key,
-                status=DocumentStatus.UPLOAD_PENDING,
-                created_at=now,
-                updated_at=now,
-            )
-            db_document = await self.doc_repository.create(doc_entity)
+        expires_at = timedelta(minutes=15)  # 15 mins expiration time
 
-            # Create presigned URL
-            presigned_url = await asyncio.to_thread(
+        async def _create_presigned_url() -> str:
+            return await asyncio.to_thread(
                 self.storage.create_presigned_url,
                 storage_key=storage_key,
                 expires_at=expires_at,
                 method="PUT",
+                user_metadata=user_metadata,
             )
-            return PresignedURLResponse(
-                document_id=db_document.document_id,
-                url=presigned_url,
-                expires_at=expires_at,
-            )
-        except DatabaseException:
-            raise
+
+        try:
+            # Create presigned URL
+            presigned_url = await _create_presigned_url()
+        except BucketNotFoundException:
+            try:
+                await asyncio.to_thread(
+                    self.storage.create_bucket,
+                )
+            except StorageException as bucket_exc:
+                logger.exception(
+                    "Failed to auto-create bucket for tenant %s.", tenant_id
+                )
+                raise DocumentServiceException(
+                    "Failed to initialize storage for file upload."
+                ) from bucket_exc
+
+            try:
+                # Auto-retry creating presigned URL
+                presigned_url = await _create_presigned_url()
+            except Exception as retry_exc:
+                logger.exception(
+                    "Failed generating presigned URL for document %s after auto-creating missing bucket.",
+                    document_id,
+                )
+                raise DocumentServiceException(
+                    "Failed to initialize file upload."
+                ) from retry_exc
+
         except StorageException:
             raise
         except Exception as exc:
@@ -88,14 +108,26 @@ class DocumentService:
                 "Failed to initialize file upload.",
             ) from exc
 
+        return PresignedURLResponse(
+            document_id=document_id,
+            url=presigned_url,
+            expires_at=expires_at,
+            required_headers={
+                "x-amz-meta-tenant-id": str(tenant_id),
+                "x-amz-meta-filename": filename,
+                "x-amz-meta-document-type": document_type,
+            },
+        )
+
     async def get_download_url(
-        self,
-        document_id: uuid.UUID,
+        self, document_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> PresignedURLResponse:
         """Create presigned GET URL to download file from S3 bucket."""
         try:
-            db_document = await self.doc_repository.get_one(document_id=document_id)
-            expires_at = timedelta(minutes=30)  # 30 mins expiration
+            # Check first if file is there
+            db_document = await self.doc_repository.get_one(document_id, tenant_id)
+
+            expires_at = timedelta(minutes=5)  # 5 mins expiration time
             presigned_url = await asyncio.to_thread(
                 self.storage.create_presigned_url,
                 storage_key=db_document.storage_key,
@@ -106,10 +138,19 @@ class DocumentService:
                 document_id=document_id,
                 url=presigned_url,
                 expires_at=expires_at,
+                required_headers={
+                    "x-amz-meta-tenant-id": str(db_document.tenant_id),
+                    "x-amz-meta-filename": db_document.filename,
+                    "x-amz-meta-document-type": db_document.document_type.value
+                    if db_document.document_type
+                    else "unknown",
+                },
             )
         except DatabaseException:
             raise
         except StorageException:
+            raise
+        except NotFoundException:
             raise
         except Exception as exc:
             logger.warning(
@@ -118,68 +159,4 @@ class DocumentService:
             )
             raise DocumentServiceException(
                 "Failed to initialize file download.",
-            ) from exc
-
-    async def finalize_upload(
-        self,
-        document_id: uuid.UUID,
-    ) -> DocumentStatusResponse:
-        try:
-            # Fetch document metadata
-            db_document = await self.doc_repository.get_one(document_id)
-
-            # Retrieve S3 storage metadata
-            metadata = await asyncio.to_thread(
-                self.storage.get_obj_metadata,
-                storage_key=db_document.storage_key,
-            )
-
-            # Modulate document metadata
-            db_document.update_storage_metadata(metadata)
-            # If object, then we can mark it as uploaded
-            db_document.mark_uploaded()
-
-            # Persist document metdata
-            updated = await self.doc_repository.update(db_document)
-            return DocumentStatusResponse(
-                document_id=updated.document_id, status=updated.status
-            )
-        except DatabaseException:
-            raise
-        except NotFoundException:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "Unexpected error occured when updating metadata for document %s.",
-                document_id,
-            )
-            raise DocumentServiceException(
-                "Failed to update document metadata.",
-            ) from exc
-
-    async def remove_document(self, document_id: uuid.UUID) -> None:
-        try:
-            # Retrieve actual document
-            db_document = await self.doc_repository.get_one(document_id)
-
-            # Delete from database
-            await self.doc_repository.delete(db_document)
-
-            # Delete from S3 storage
-            await asyncio.to_thread(
-                self.storage.delete_object,
-                storage_key=db_document.storage_key,
-            )
-
-        except DatabaseException:
-            raise
-        except NotFoundException:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "Unexpected error occured when removing document %s metadata.",
-                document_id,
-            )
-            raise DocumentServiceException(
-                "Failed to initialize file deletion.",
             ) from exc

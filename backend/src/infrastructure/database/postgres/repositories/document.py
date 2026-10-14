@@ -1,8 +1,8 @@
 from uuid import UUID
 
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.repository import DocumentRepository
@@ -23,16 +23,16 @@ class PostgresDocumentRepository(DocumentRepository):
         self,
         session: AsyncSession,
     ):
-        self.session = session
+        self._session = session
 
-    async def create(self, document: DocumentEntity) -> DocumentEntity:
+    async def create(
+        self, document: DocumentEntity, idempotency_key: str
+    ) -> DocumentEntity:
         db_document = DocumentMapper.to_model(document)
 
-        # Add new object to session
         try:
-            self.session.add(db_document)
-            await self.session.commit()
-            await self.session.refresh(db_document)
+            # Add new object to session
+            self._session.add(db_document)
         except IntegrityError as exc:
             logger.warning(
                 "Database error as new document %s exists already: %s",
@@ -43,81 +43,77 @@ class PostgresDocumentRepository(DocumentRepository):
                 f"Document '{document.document_id}' already exists in database."
             ) from exc
         except SQLAlchemyError as exc:
-            logger.warning(
-                "Database error creating new document %s: %s",
+            logger.error(
+                "Database error when creating new entry for document with id '%s'.",
                 db_document.document_id,
-                exc,
             )
-            await self.session.rollback()
             raise DatabaseInternalException(
                 f"Failed to create new document metadata entry for '{db_document.document_id}' in database."
             ) from exc
         return DocumentMapper.to_entity(db_document)  # after refresh
 
-    async def get_one(self, document_id: UUID) -> DocumentEntity:
-        """Retrieve a record by its primary key."""
-        try:
-            stmt = select(Document).where(Document.document_id == document_id)
-            result = await self.session.execute(stmt)
-            db_document: Document | None = result.scalar_one_or_none()
-        except SQLAlchemyError as exc:
-            logger.warning(
-                "Database error retrieving document %s: %s",
-                document_id,
-                exc,
-            )
-            await self.session.rollback()
-            raise DatabaseInternalException(
-                f"Failed to read document metadata for '{document_id}' in database."
-            ) from exc
-
-        if db_document is None:
-            raise DocumentNotFoundException(document_id=document_id)
-
-        return DocumentMapper.to_entity(db_document)
 
     async def update(
-        self,
-        document: DocumentEntity,
+        self, document: DocumentEntity, idempotency_key: str
     ) -> DocumentEntity:
         """Update an entry."""
         db_document = DocumentMapper.to_model(document)
-
-        # Add objects to session
         try:
-            merged_document = await self.session.merge(db_document)
-            await self.session.commit()
-            await self.session.refresh(merged_document)
+            merged_document = await self._session.merge(db_document)
+            await self._session.refresh(merged_document)
         except SQLAlchemyError as exc:
-            logger.warning(
-                "Database error updating document %s: %s",
+            logger.error(
+                "Failed to update document with id '%s' in database.",
                 db_document.document_id,
-                exc,
             )
-            await self.session.rollback()
             raise DatabaseInternalException(
                 f"Failed to update document metadata for '{document.document_id}' in database."
             ) from exc
 
         return DocumentMapper.to_entity(merged_document)  # after refresh
 
-    async def delete(
-        self,
-        document: DocumentEntity,
-    ) -> None:
-        db_document = DocumentMapper.to_model(document)
+    async def delete(self, document_id: UUID, tenant_id: UUID) -> None:
 
         try:
-            merged_document = await self.session.merge(db_document)
-            await self.session.delete(merged_document)
-            await self.session.commit()
-        except SQLAlchemyError as exc:
-            logger.warning(
-                "Database error removing document %s: %s",
-                db_document.document_id,
-                exc,
+            stmt = delete(Document).where(
+                Document.document_id == document_id, Document.tenant_id == tenant_id
             )
-            await self.session.rollback()
+            result = await self._session.execute(stmt)
+
+            if result.scalar_one_or_none() is None:
+                logger.exception(
+                    "Document with id '%s' could not be found.", document_id
+                )
+                raise DocumentNotFoundException(document_id=document_id)
+
+        except SQLAlchemyError as exc:
+            logger.error(
+                "Failed to remove document with id '%s' in database.",
+                document_id,
+            )
             raise DatabaseInternalException(
-                f"Failed to remove document metadata for '{document.document_id}' in database."
+                f"Failed to remove document metadata for '{document_id}' in database."
             ) from exc
+
+    async def get_one(self, document_id: UUID, tenant_id: UUID) -> DocumentEntity:
+        """Retrieve a record by its primary key."""
+        try:
+            stmt = select(Document).where(
+                Document.document_id == document_id, Document.tenant_id == tenant_id
+            )
+            result = await self._session.execute(stmt)
+            db_document = result.scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            logger.error(
+                "Database error when fetching document with id '%s'.",
+                document_id,
+            )
+            raise DatabaseInternalException(
+                f"Failed to read document metadata for '{document_id}' in database."
+            ) from exc
+
+        if db_document is None:
+            logger.exception("Document with id '%s' could not be found.", document_id)
+            raise DocumentNotFoundException(document_id=document_id)
+
+        return DocumentMapper.to_entity(db_document)
