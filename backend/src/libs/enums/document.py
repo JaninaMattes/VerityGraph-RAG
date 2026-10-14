@@ -14,7 +14,7 @@ class DocumentType(StrEnum):
     HTML = "html"
     IMAGE = "image"
     PPTX = "pptx"
-
+    UNKNOWN = "unknown"
 
 class DocumentStatus(StrEnum):
     UPLOAD_PENDING = "pending"

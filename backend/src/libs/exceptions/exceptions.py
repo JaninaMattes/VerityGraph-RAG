@@ -3,13 +3,11 @@ Application exception hierarchy.
 
 Replace existing exceptions with the following structure.
 """
-
+from uuid import UUID
 
 # ============================================================
 # Base Application Exception
 # ============================================================
-
-from uuid import UUID
 
 
 class ApplicationException(Exception):
@@ -72,17 +70,26 @@ class ObjectNotFoundException(NotFoundException):
         self.storage_key = storage_key
         self.bucket_name = bucket_name
 
+class BucketNotFoundException(NotFoundException):
+    """
+    Storage object does not exist.
+    """
+
+    def __init__(self, bucket_name: str):
+        super().__init__(f"The specified bucket '{bucket_name}' does not exist.")
+        self.bucket_name = bucket_name
+
 
 class DocumentNotFoundException(NotFoundException):
     def __init__(self, document_id: UUID):
-        super().__init__(f"Document with ID '{document_id}' was not found.")
+        super().__init__(f"Document with id '{document_id}' was not found.")
 
         self.document_id = document_id
 
 class DocumentChunkNotFoundException(NotFoundException):
     def __init__(self, chunk_id: UUID, chunk_idx: int, document_id: UUID):
         super().__init__(
-            f"Chunk with ID '{chunk_id}' and Index '{chunk_idx}' of document with ID '{document_id} 'was not found."
+            f"Chunk with id '{chunk_id}' and Index '{chunk_idx}' of document with id '{document_id} 'was not found."
         )
 
         self.chunk_id = chunk_id
@@ -91,28 +98,28 @@ class DocumentChunkNotFoundException(NotFoundException):
 
 class IngestionJobNotFoundException(NotFoundException):
     def __init__(self, job_id: UUID):
-        super().__init__(f"Job with ID '{job_id}' was not found.")
+        super().__init__(f"Job with id '{job_id}' was not found.")
 
         self.chunk_id = job_id
 
 
 class UserNotFoundException(NotFoundException):
     def __init__(self, user_id: UUID):
-        super().__init__(f"User with ID '{user_id}' was not found.")
+        super().__init__(f"User with id '{user_id}' was not found.")
 
         self.user_id = user_id
 
 
 class TenantNotFoundException(NotFoundException):
     def __init__(self, tenant_id: UUID):
-        super().__init__(f"Tenant with ID '{tenant_id}' was not found.")
+        super().__init__(f"Tenant with id '{tenant_id}' was not found.")
 
         self.tenant_id = tenant_id
 
 
 class CredentialsNotFoundException(NotFoundException):
     def __init__(self, credentials_id: UUID):
-        super().__init__(f"Credentials with ID '{credentials_id}' was not found.")
+        super().__init__(f"Credentials with id '{credentials_id}' was not found.")
 
         self.credentials_id = credentials_id
 
@@ -137,7 +144,7 @@ class DocumentNotCreatedException(ApplicationException):
     """
 
     def __init__(self, document_id: UUID):
-        super().__init__(f"Document with ID '{document_id}' was not created.")
+        super().__init__(f"Document with id '{document_id}' was not created.")
 
         self.document_id = document_id
 

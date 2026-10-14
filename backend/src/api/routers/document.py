@@ -45,7 +45,6 @@ async def create_upload_url(
     return await service.create_upload_url(
         tenant_id=tenant_id,
         filename=request.filename,
-        content_type=request.content_type,
         namespace=request.namespace,
     )
 
@@ -57,6 +56,7 @@ async def create_upload_url(
 )
 async def get_download_url(
     document_id: uuid.UUID,
+    tenant_id: TenantIdDep,
     service: DocServiceDep,
 ) -> PresignedURLResponse:
     """
@@ -89,48 +89,4 @@ async def get_download_url(
     PresignedURL
       The response containing the presigned URL and expiration
     """
-    return await service.get_download_url(document_id)
-
-
-@router.delete(
-    "/documents/{document_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def delete_document(
-    document_id: uuid.UUID,
-    service: DocServiceDep,
-) -> None:
-    """
-    This route removes the metadata of a document from the database.
-    When the document is set to 'DELETED' status a background cleanup service is triggered
-    to also delete the file from the MinIO storage.
-
-    Attributes
-    ----------
-    document_id: uuid.UUID
-      The ID of the document to be deleted.
-    service: DocServiceDep
-     The service instance to interact with the document service
-
-    Returns
-    -------
-    None
-    """
-    await service.remove_document(document_id)
-    """
-    This route removes the metadata of a document from the database.
-    When the document is set to 'DELETED' status a background cleanup service is triggered
-    to also delete the file from the MinIO storage.
-
-    Attributes
-    ----------
-    document_id: uuid.UUID
-      The ID of the document to be deleted.
-    service: DocServiceDep
-     The service instance to interact with the document service
-
-    Returns
-    -------
-    None
-    """
-    await service.remove_document(document_id)
+    return await service.get_download_url(document_id, tenant_id)
