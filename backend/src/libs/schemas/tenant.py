@@ -1,7 +1,7 @@
 
 from pydantic import BaseModel
 
-from src.shared.enums.tenant import TenantStatus
+from src.libs.enums.tenant import TenantStatus
 
 """The schema module provides the building blocks for ..."""
 

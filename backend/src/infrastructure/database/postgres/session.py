@@ -1,32 +1,39 @@
+# src/infrastructure/database/postgres/session.py
+
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from fastapi import Request
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.infrastructure.database.postgres.engine import async_engine
-from src.shared.core.logger import get_logger
+from src.libs.core.logger import get_logger
 
 logger = get_logger("api.infrastructure.postgres")
 
 # Create an async session factory
-async_session_factory = async_sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,  # Important for async
-    autocommit=False,
-    autoflush=False,
-)
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,  # Important for async
+        autocommit=False,
+        autoflush=False,
+    )
 
-async def get_db_session() -> AsyncGenerator[AsyncSession]:
+
+# FastAPI Dependency
+async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """
     Utilise generator as context manager.
     Yields a database session and ensures proper cleanup.
     """
-    async with async_session_factory() as session:
+    factory = request.app.state.session_factory
+    async with factory() as session:
         try:
             yield session  # suspends execution and passes session to 'with' block
         except Exception:
-            logger.exception("Session generation failure! Session is rolled back.")
+            logger.warning("Request failed, rolling back database session.")
             await session.rollback()
             raise
         finally:
+            logger.info("Database session closed.")
             await session.close()

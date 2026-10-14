@@ -4,15 +4,15 @@ from datetime import UTC, datetime
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
-from src.shared.core.logger import get_logger
-from src.shared.enums.tenant import TenantStatus
-from src.shared.exception.exceptions import (
+from src.libs.core.logger import get_logger
+from src.libs.enums.tenant import TenantStatus
+from src.libs.exceptions.exceptions import (
     DatabaseException,
     NotFoundException,
     TenantNotFoundException,
     TenantServiceException,
 )
-from src.shared.schemas.tenant import TenantResponse
+from src.libs.schemas.tenant import TenantResponse
 
 logger = get_logger("api.domain.tenant.service")
 

@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
-from src.shared.enums.ingestionjob import IngestionStage, ProcessingStatus
+from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 if typing.TYPE_CHECKING:
     from .document import Document
