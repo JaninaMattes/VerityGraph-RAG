@@ -2,7 +2,6 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
 
 from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -73,6 +72,7 @@ class Settings(BaseSettings):
     kafka_group_id: str = "minio-ingestion-group"
     kafka_auto_offset_reset: str = "earliest"
     kafka_enable_auto_commit: bool = False  # manually commit
+    kafka_num_workers: int = 2
 
     # ---------------------------------------------------------
     # Temporal
