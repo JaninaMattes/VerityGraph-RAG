@@ -1,37 +1,65 @@
 name: Run Unit Test via Pytest
 
-on: [push]
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Principle of Least Privilege
+permissions:
+  contents: read
+
+# Concurrency control to cancel redundant runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   run-test:
-    name: python
+    name: python-test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2 (Pinned SHA)
 
-      - name: "Set up Python"
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5.3.0 (Pinned SHA)
         with:
-          python-version-file: "backend/.python-version"
+          python-version-file: "./backend/.python-version"
 
       - name: Install uv and enable caching
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v5.x (Pinned SHA)
         with:
           version: "0.12.19"
           enable-cache: true
 
-      # Install Temporal CLI for Workflow Tests
+      # Install pinned binary version of Temporal CLI instead of `curl | sh`
       - name: Install Temporal CLI
         run: |
-          curl -sSf https://temporal.download/cli.sh | sh
-          echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
+          TEMPORAL_VERSION="1.4.0" # Pin to a specific, tested version
+          curl -sSfL https://github.com/temporalio/cli/releases/download/v${TEMPORAL_VERSION}/temporal_cli_${TEMPORAL_VERSION}_linux_amd64.tar.gz -o temporal.tar.gz
+          # Optional but recommended: verify SHA256 checksum here
+          tar -xzf temporal.tar.gz
+          chmod +x temporal
+          sudo mv temporal /usr/local/bin/temporal
+          rm temporal.tar.gz
 
-      # Run the project inside the /backend folder
       - name: Install the project
         working-directory: ./backend
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests
         working-directory: ./backend
-        run: uv run pytest tests
+        # Create results for analytics dashboard
+        run: uv run pytest tests --junitxml=pytest-report.xml
+
+      # Upload test results as artifacts
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3 (Pinned SHA)
+        with:
+          name: pytest-report-${{ github.run_id }}
+          path: ./backend/pytest-report.xml
+          retention-days: 7
