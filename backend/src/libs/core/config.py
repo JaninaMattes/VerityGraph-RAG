@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
     api_prefix: str = "/api/v1"
-    dev_tenant_id: UUID = Field(default="00000000-0000-0000-0000-00000000")
+    # TODO: Remove just while JWT not implemented
+    dev_tenant_id: str = Field(default="00000000-0000-0000-0000-00000000") 
 
     secret_key: SecretStr
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
