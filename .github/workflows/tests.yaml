@@ -51,7 +51,27 @@ jobs:
         env:
           UV_LINK_MODE: copy 
         run: uv sync --locked --all-extras --dev
-
+      - name: Create .env file for CI
+        working-directory: ./backend
+        run: |
+          cat << 'EOF' > .env
+          DEV_TENANT_ID=12bf3456-7d89-12d3-a456-78c91cf2b34f
+          ENVIRONMENT=testing
+          SECRET_KEY=ci-test-secret-key-12345678901234567890123456789012
+          REDIS_URL=redis://localhost:6379/0
+          REDIS_PASSWORD=ci-password
+          POSTGRES_URL=postgresql+asyncpg://test:test@localhost:5432/test_db
+          MINIO_URL=localhost:9000
+          MINIO_ROOT_USER=ci-minio
+          MINIO_ROOT_PASSWORD=ci-password
+          MINIO_SSE_CUSTOMER_KEY=local-dev-sse-key-32-chars-min
+          KAFKA_URL=localhost:9092
+          KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+          TEMPORAL_URL=localhost:7233
+          TEMPORAL_TASK_QUEUE=ci-task-queue
+          FRONTEND_URL=http://localhost:3000
+          EOF
+          
       - name: Run tests
         working-directory: ./backend
         # Create results for analytics dashboard
