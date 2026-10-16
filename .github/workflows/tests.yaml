@@ -48,6 +48,8 @@ jobs:
 
       - name: Install the project
         working-directory: ./backend
+        env:
+          UV_LINK_MODE: copy 
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests
@@ -57,7 +59,7 @@ jobs:
 
       # Upload test results as artifacts
       - name: Upload test results
-        if: always()
+        if: always() && !env.ACT # <-- Added && !env.ACT to skip in local 'act' runs
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3 (Pinned SHA)
         with:
           name: pytest-report-${{ github.run_id }}
