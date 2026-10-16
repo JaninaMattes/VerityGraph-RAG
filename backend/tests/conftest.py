@@ -7,6 +7,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
+from src.libs.core.config import get_settings
 from src.main import app
 
 
@@ -31,6 +32,12 @@ def mock_document_name() -> str:
 # ------------------------------------------------------
 # 2. Dependency Mocks
 # ------------------------------------------------------
+@pytest.fixture(autouse=True)
+def override_settings_for_tests(monkeypatch):
+    # Clear the cache so it re-evaluates with test environment variables
+    get_settings.cache_clear()
+
+
 # Mock Domain Service
 @pytest_asyncio.fixture
 def mock_document_service() -> AsyncMock:

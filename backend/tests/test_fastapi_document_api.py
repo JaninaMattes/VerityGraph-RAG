@@ -8,7 +8,7 @@ from src.libs.schemas.document import PresignedURLResponse
 pytestmark = pytest.mark.asyncio
 
 # ==========================================================
-# Endpoint 1: POST /documents (Create Upload URL)
+# Endpoint 1: /documents
 # ==========================================================
 
 

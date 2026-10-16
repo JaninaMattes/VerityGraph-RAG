@@ -2,12 +2,17 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
 
 from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+# Dynamically find the directory of .env file
+CURRENT_FILE = Path(__file__).resolve()
+BASE_DIR = CURRENT_FILE.parent
+
+# Walk up the directory tree
+while not (BASE_DIR / ".env").exists() and BASE_DIR.parent != BASE_DIR:
+    BASE_DIR = BASE_DIR.parent
 
 
 class Settings(BaseSettings):
