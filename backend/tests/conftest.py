@@ -5,15 +5,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from src.api.dependencies import get_current_tenant_id, get_document_service
+from pydantic import HttpUrl, PostgresDsn, RedisDsn, SecretStr
+from src.api.dependencies import (
+    get_current_tenant_id,
+    get_document_service,
+    get_settings,
+)
 from src.domain.documents.service import DocumentService
-from src.libs.core.config import get_settings
+from src.infrastructure.workflow_execution.temporalio.activities import (
+    IngestFileActivities,
+)
+from src.libs.core.config import Settings
 from src.main import app
 
-
-# ------------------------------------------------------
+# ==========================================================
 # 1. Data Fixtures
-# ------------------------------------------------------
+# ==========================================================
+
+
 @pytest.fixture
 def mock_tenant_id() -> uuid.UUID:
     return uuid.uuid4()
@@ -29,35 +38,69 @@ def mock_document_name() -> str:
     return "contract.pdf"
 
 
-# ------------------------------------------------------
-# 2. Dependency Mocks
-# ------------------------------------------------------
+@pytest.fixture
+def test_settings() -> Settings:
+    """
+    Provides a fully populated, safe Settings object for testing.
+    Using a fixture allows other tests to inject this directly if needed.
+    """
+    return Settings(
+        app_name="Graph RAG Backend",
+        environment="testing",
+        secret_key=SecretStr("test-secret-key-for-ci-only-32-chars!!"),
+        redis_url=RedisDsn("redis://localhost:6379/0"),
+        redis_password=SecretStr("test-pwd"),
+        postgres_url=PostgresDsn("postgresql+asyncpg://test:test@localhost:5432/test"),
+        minio_url="localhost:9000",
+        minio_root_user=SecretStr("test-user"),
+        minio_root_password=SecretStr("test-pwd"),
+        minio_sse_customer_key=SecretStr("minio-sse-customer-test-key-32!!"),
+        kafka_url="localhost:9092",
+        kafka_bootstrap_servers="localhost:9092",
+        temporal_url="localhost:7233",
+        temporal_task_queue="test-queue",
+        frontend_url=HttpUrl("http://localhost:3000"),
+        dev_tenant_id="12te3456-7s89-12t3-a456-78c91cf2b34f",
+    )
+
+
+# ==========================================================
+# 2. Dependency Overrides (The Core of FastAPI Testing)
+# ==========================================================
+
+
 @pytest.fixture(autouse=True)
-def override_settings_for_tests(monkeypatch):
-    # Clear the cache so it re-evaluates with test environment variables
+def override_global_dependencies(test_settings: Settings):
+    """
+    Autouse fixture that applies global dependency overrides for ALL tests.
+    This ensures no test accidentally reads the real .env file or hits real infrastructure.
+    """
+    # Clear cache to ensure a fresh start
     get_settings.cache_clear()
 
+    # Override the settings dependency
+    app.dependency_overrides[get_settings] = lambda: test_settings
 
-# Mock Domain Service
-@pytest_asyncio.fixture
-def mock_document_service() -> AsyncMock:
-    # spec=DocumentService ensures the mock only allows valid methods
-    return AsyncMock(spec=DocumentService)
+    yield
+
+    # Teardown: Clean up to prevent leakage between tests
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
 async def client(
     mock_document_service: AsyncMock, mock_tenant_id: uuid.UUID
 ) -> AsyncGenerator[AsyncClient, None]:
-
-    # Define overrides that capture the tenant_id
+    """
+    Provides an isolated AsyncClient for API testing.
+    """
     async def override_get_tenant() -> uuid.UUID:
         return mock_tenant_id
 
     async def override_get_service() -> DocumentService:
         return mock_document_service
 
-    # Apply overrides
+    # Apply route-specific overrides
     app.dependency_overrides[get_current_tenant_id] = override_get_tenant
     app.dependency_overrides[get_document_service] = override_get_service
 
@@ -66,41 +109,51 @@ async def client(
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    # Teardown: Clean up overrides to prevent leakage between tests
-    app.dependency_overrides.clear()
+    # Override_global_dependencies handles clearing the overrides
+    app.dependency_overrides.pop(get_current_tenant_id, None)
+    app.dependency_overrides.pop(get_document_service, None)
 
 
-# ------------------------------------------------------
-# 4. Temporal Fixtures
-# ------------------------------------------------------
+# ==========================================================
+# 3. Domain & Infrastructure Mocks
+# ==========================================================
+
+
+@pytest_asyncio.fixture
+def mock_document_service() -> AsyncMock:
+    """
+    spec=DocumentService ensures the mock raises an AttributeError
+    if a test tries to call a method that doesn't exist on the real class.
+    This prevents "phantom" tests that pass but test nothing.
+    """
+    return AsyncMock(spec=DocumentService)
 
 
 @pytest.fixture
-def mock_db_session():
+def mock_db_session() -> AsyncMock:
     """
     Mocks the SQLAlchemy async session.
-    We use AsyncMock so it can handle `await session.commit()`.
     """
     session = AsyncMock()
-    # Configure async context manager (`async with session_factory() as session:`)
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     return session
 
 
 @pytest.fixture
-def mock_session_factory(mock_db_session):
+def mock_session_factory(mock_db_session: AsyncMock) -> MagicMock:
     """
-    Mocks the `async_sessionmaker`. Calling it should return the mock session.
+    Mocks the `async_sessionmaker`.
     """
     return MagicMock(return_value=mock_db_session)
 
 
 @pytest.fixture
-def activities(mock_session_factory):
+def activities(mock_session_factory: MagicMock) -> "IngestFileActivities":
     """
-    Instantiates the IngestFileActivities class with all its dependencies mocked out.
+    Instantiates the Temporal Activities class with all dependencies mocked.
     """
+    # Local import prevents circular dependency issues and speeds up test collection
     from src.infrastructure.workflow_execution.temporalio.activities import (
         IngestFileActivities,
     )
@@ -115,12 +168,13 @@ def activities(mock_session_factory):
 @pytest.fixture
 def activity_context():
     """
-    Mocks Temporal's global activity context (`activity.info()` and `activity.logger`).
-    This avoids the need for a running Temporal server just to test the Python logic.
+    Mocks Temporal's global activity context.
     """
+    target_module = "temporalio.activity"
+
     with (
-        patch("temporalio.activity.info") as mock_info,
-        patch("temporalio.activity.logger") as mock_logger,
+        patch(f"{target_module}.info") as mock_info,
+        patch(f"{target_module}.logger") as mock_logger,
     ):
         mock_info.return_value = MagicMock(
             workflow_run_id="test-run-abc", activity_id="activity-123"

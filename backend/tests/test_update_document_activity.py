@@ -7,12 +7,19 @@ from src.infrastructure.workflow_execution.temporalio.models import (
 )
 from temporalio.exceptions import ApplicationError
 
+# Apply to all tests in this module
+pytestmark = pytest.mark.asyncio
 
-@pytest.mark.asyncio
+
+# ==========================================================
+# Temporalio: Update Document Activity
+# ==========================================================
+
+
 class TestUpdateDocumentActivity:
     """Grouped test suit for Document activities."""
 
-    async def test_update_document_success(
+    async def test_update_document_activty_and_check_idempotency_key(
         self, activities, mock_db_session, activity_context
     ):
         # 1. Arrange
@@ -54,7 +61,7 @@ class TestUpdateDocumentActivity:
             assert call_kwargs["idempotency_key"] == "test-run-abc-activity-123"
 
     @pytest.mark.asyncio
-    async def test_update_document_not_found_raises_non_retryable(
+    async def test_update_document_not_found_raises_non_retryable_for_not_found_error(
         self, activities, mock_db_session, activity_context
     ):
         # 1. Arrange

@@ -12,17 +12,17 @@ pytestmark = pytest.mark.asyncio
 # ==========================================================
 
 
-@pytest.mark.asyncio
 class TestDocumentAPIEndpoints:
     """
-    Grouped test suite for Document API endpoints.
+    Test suite for the Health and Documents API endpoints.
+    Ensures the application correctly generates presigned Upload/Download URLs.
     """
 
     # ---------------------------------------------------------
     # POST /documents (Create Upload URL)
     # ---------------------------------------------------------
 
-    async def test_create_upload_url_success(
+    async def test_create_upload_url_returns_201_and_presigned_url(
         self,
         client,
         mock_document_service,
@@ -30,7 +30,11 @@ class TestDocumentAPIEndpoints:
         mock_document_id,
         mock_document_name,
     ):
-        """Test happy path: Valid payload returns 201 and correctly invokes the service."""
+        """
+        GIVEN
+        WHEN
+        THEN
+        """
         # 1. Arrange
         mock_service_response = PresignedURLResponse(
             document_id=mock_document_id,
@@ -58,8 +62,12 @@ class TestDocumentAPIEndpoints:
             tenant_id=mock_tenant_id, filename="contract.pdf", namespace="legal"
         )
 
-    async def test_create_upload_url_validation_error(self, client):
-        """Test that Pydantic catches invalid payloads before hitting the service."""
+    async def test_create_upload_url_and_handle_missing_doc_returns_422(self, client):
+        """
+        GIVEN
+        WHEN
+        THEN
+        """
         # Act
         response = await client.post("/api/v1/documents", json={"namespace": "legal"})
 
@@ -72,10 +80,14 @@ class TestDocumentAPIEndpoints:
     # GET /documents/{document_id} (Download URL)
     # ---------------------------------------------------------
 
-    async def test_get_download_url_success(
+    async def test_get_download_url_returns_presigned_url_and_200(
         self, client, mock_document_service, mock_document_id, mock_tenant_id
     ):
-        """Test happy path for fetching a download URL."""
+        """
+        GIVEN
+        WHEN
+        THEN
+        """
         # 1. Arrange
         mock_response = PresignedURLResponse(
             document_id=mock_document_id,
@@ -95,13 +107,13 @@ class TestDocumentAPIEndpoints:
             mock_document_id, mock_tenant_id
         )
 
-    async def test_get_download_url_not_found(
+    async def test_get_download_url_and_handle_not_found_returns_404(
         self, client, mock_document_service, mock_document_id
     ):
         """
-        Test when the document is not found.
-        Verify that when the service raises a Domain Exception (DocumentNotFoundException),
-        your FastAPI global exception handler correctly translates it to an HTTP 404.
+        GIVEN The test domain is not found.
+        WHEN
+        THEN The service raises a Domain Exception (DocumentNotFoundException), which the FastAPI global exception handler correctly translates it to an HTTP 404.
         """
         # 1. Arrange: Simulate the service failing
         mock_document_service.get_download_url.side_effect = DocumentNotFoundException(
