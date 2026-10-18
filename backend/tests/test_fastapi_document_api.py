@@ -31,9 +31,9 @@ class TestDocumentAPIEndpoints:
         mock_document_name,
     ):
         """
-        GIVEN
-        WHEN
-        THEN
+        GIVEN the application is running in the testing environment and filename, namespace and mime_type are known
+        WHEN a POST request is made against '/api/v1/documents'
+        THEN a HTTP status code of 201 as well as the pre-signed uploade URL are returned
         """
         # 1. Arrange
         mock_service_response = PresignedURLResponse(
@@ -64,9 +64,9 @@ class TestDocumentAPIEndpoints:
 
     async def test_create_upload_url_and_handle_missing_doc_returns_422(self, client):
         """
-        GIVEN
-        WHEN
-        THEN
+        GIVEN the application is running in the testing environment and filename, namespace and mime_type are knowns
+        WHEN a POST request is made against '/api/v1/documents' with a namespace parameter that does not exist
+        THEN a HTTP status code of 422 is returned
         """
         # Act
         response = await client.post("/api/v1/documents", json={"namespace": "legal"})
@@ -84,9 +84,9 @@ class TestDocumentAPIEndpoints:
         self, client, mock_document_service, mock_document_id, mock_tenant_id
     ):
         """
-        GIVEN
-        WHEN
-        THEN
+        GIVEN the application is running in the testing environment and the correct document id are known
+        WHEN a GET request is made against '/api/v1/documents' with a document id as parameter
+        THEN a HTTP status code of 200 as well as the pre-signed download URL are returned
         """
         # 1. Arrange
         mock_response = PresignedURLResponse(
@@ -111,8 +111,8 @@ class TestDocumentAPIEndpoints:
         self, client, mock_document_service, mock_document_id
     ):
         """
-        GIVEN The test domain is not found.
-        WHEN
+        GIVEN The test domain for a specific document id is not found.
+        WHEN a GET request is made against '/api/v1/documents' with a document id as parameter
         THEN The service raises a Domain Exception (DocumentNotFoundException), which the FastAPI global exception handler correctly translates it to an HTTP 404.
         """
         # 1. Arrange: Simulate the service failing
