@@ -10,7 +10,7 @@ from src.main import app
 pytestmark = pytest.mark.asyncio
 
 # ==========================================================
-# Health Endpoint: POST /health (receive app name)
+# Endpoint: POST /health (receive app name)
 # ==========================================================
 
 

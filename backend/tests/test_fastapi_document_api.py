@@ -81,8 +81,7 @@ class TestDocumentAPIEndpoints:
 
         # 3. Assert
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        error_details = response.json()["detail"]
-        assert any(err["loc"] == ["body", "filename"] for err in error_details)
+        assert response.json() == {"detail": "Missing required parameter 'filename'"}
 
     async def test_create_upload_url_and_handle_missing_doc_returns_422(
         self, doc_client: AsyncClient

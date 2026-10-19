@@ -65,5 +65,6 @@ class TestTenantAPIEndpoints:
 
         # 3. Assert
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        error_details = response.json()["detail"]
-        assert any(err["loc"] == ["body", "tenant"] for err in error_details)
+        assert response.json() == {
+            "detail": "Missing required parameter 'organisation' name"
+        }

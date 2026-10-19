@@ -47,12 +47,12 @@ async def create_upload_url(
     if not filename or not filename.strip():
         raise HTTPException(
             status_code=400,
-            detail="Missing required parameter 'filename' or parameter only contains whitespace.",
+            detail="Missing required parameter 'filename'",
         )
     if not namespace or not namespace.strip():
         raise HTTPException(
             status_code=400,
-            detail="Missing required parameter 'namespace' or parameter only contains whitespace.",
+            detail="Missing required parameter 'namespace'",
         )
     return await service.create_upload_url(
         tenant_id=tenant_id,
