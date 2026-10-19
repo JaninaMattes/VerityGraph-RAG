@@ -98,7 +98,7 @@ class IngestFileActivities:
             except Exception as exc:
                 # Database error will be handled by temporal
                 activity.logger.exception(
-                    "Unexpected system failure creating document %s.",
+                    "Unexpected system failure creating document with id '%s'.",
                     payload.document_id,
                 )
                 raise ApplicationError(
@@ -150,9 +150,13 @@ class IngestFileActivities:
                     str(exc), non_retryable=True, type="NotFound"
                 ) from exc
             except Exception as exc:
+                activity.logger.exception(
+                    "Unexpected system failure updating document with id '%s'.",
+                    payload.document_id,
+                )
                 # Temporal's retry policies handles transient DB errors
                 raise ApplicationError(
-                    f"Failed to update document {payload.document_id}",
+                    f"Failed to update document with id {payload.document_id}",
                     non_retryable=False,
                     type="DatabaseFailure",
                 ) from exc
@@ -201,6 +205,10 @@ class IngestFileActivities:
                 await session.commit()
 
             except Exception as exc:
+                activity.logger.exception(
+                    "Unexpected system failure creating ingestion job for document with id '%s'.",
+                    payload.document_id,
+                )
                 raise ApplicationError(
                     f"Failed to create ingestion job for document with id {payload.document_id}.",
                     non_retryable=False,
@@ -256,7 +264,7 @@ class IngestFileActivities:
                 await session.commit()
             except Exception as exc:
                 activity.logger.exception(
-                    "Failed to update ingestion job %s.",
+                    "Unexpected system failure updating job with id '%s'.",
                     payload.job_id,
                 )
                 raise ApplicationError(
@@ -269,7 +277,6 @@ class IngestFileActivities:
     async def process_document_activity(
         self, payload: ProcessDocumentPayload
     ) -> ProcessDocumentResult:
-        info = activity.info()
         activity.logger.info(
             "Processing document %s from bucket %s.",
             payload.document_id,
