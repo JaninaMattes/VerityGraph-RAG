@@ -1,6 +1,7 @@
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from src.api.dependencies import get_settings
 from src.libs.schemas.health import AppHealthResponse
 from src.main import app
@@ -9,7 +10,7 @@ from src.main import app
 pytestmark = pytest.mark.asyncio
 
 # ==========================================================
-# Endpoint 2: POST /health (receive app name)
+# Health Endpoint: POST /health (receive app name)
 # ==========================================================
 
 
@@ -25,7 +26,7 @@ class TestHealthAPIEndpoints:
 
     async def test_get_health_info_returns_200_and_correct_app_name(
         self,
-        client,
+        client: AsyncClient,
     ):
         """
         GIVEN the application is running in the testing environment
