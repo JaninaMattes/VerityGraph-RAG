@@ -73,6 +73,9 @@ class DocumentService:
             # Create presigned URL
             presigned_url = await _create_presigned_url()
         except BucketNotFoundException:
+            logger.exception(
+                "The specified bucket was not found. Trying to auto-create the missing bucket."
+            )
             try:
                 await asyncio.to_thread(
                     self.storage.create_bucket,
@@ -120,7 +123,9 @@ class DocumentService:
         )
 
     async def get_download_url(
-        self, document_id: uuid.UUID, tenant_id: uuid.UUID
+        self,
+        document_id: uuid.UUID,
+        tenant_id: uuid.UUID,  # Injected from settings/dependency
     ) -> PresignedURLResponse:
         """Create presigned GET URL to download file from S3 bucket."""
         try:
@@ -153,7 +158,7 @@ class DocumentService:
         except NotFoundException:
             raise
         except Exception as exc:
-            logger.warning(
+            logger.exception(
                 "Unexpected error occured when generating presigned GET URL for document %s.",
                 document_id,
             )

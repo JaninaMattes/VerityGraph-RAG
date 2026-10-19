@@ -24,6 +24,6 @@ class TenantRepository(Protocol):
 
     async def delete(
         self,
-        tenant: TenantEntity,
+        tenant_id: UUID,
     ) -> None:
         raise NotImplementedError("Subclasses must implement delete method")
