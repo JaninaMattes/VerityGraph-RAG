@@ -10,8 +10,10 @@ from src.api.dependencies import (
     get_current_tenant_id,
     get_document_service,
     get_settings,
+    get_tenant_service,
 )
 from src.domain.documents.service import DocumentService
+from src.domain.tenants.service import TenantService
 from src.infrastructure.workflow_execution.temporalio.activities import (
     IngestFileActivities,
 )
@@ -37,6 +39,9 @@ def mock_document_id() -> uuid.UUID:
 def mock_document_name() -> str:
     return "contract.pdf"
 
+@pytest.fixture
+def mock_tenant_organisation() -> str:
+    return "Test Organisation"
 
 @pytest.fixture
 def test_settings() -> Settings:
@@ -88,12 +93,23 @@ def override_global_dependencies(test_settings: Settings):
 
 
 @pytest_asyncio.fixture
-async def client(
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """Provides an isolated AsyncClient for FastAPI testing."""
+    # Setup AsyncClient with ASGI transport for in-process testing
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def doc_client(
     mock_document_service: AsyncMock, mock_tenant_id: uuid.UUID
 ) -> AsyncGenerator[AsyncClient, None]:
     """
     Provides an isolated AsyncClient for API testing.
     """
+
     async def override_get_tenant() -> uuid.UUID:
         return mock_tenant_id
 
@@ -114,6 +130,34 @@ async def client(
     app.dependency_overrides.pop(get_document_service, None)
 
 
+@pytest_asyncio.fixture
+async def tenant_client(
+    mock_tenant_service: AsyncMock, mock_tenant_id: uuid.UUID
+) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Provides an isolated AsyncClient for API testing.
+    """
+
+    async def override_get_tenant() -> uuid.UUID:
+        return mock_tenant_id
+
+    async def override_get_tenant_service() -> TenantService:
+        return mock_tenant_service
+
+    # Apply route-specific overrides
+    app.dependency_overrides[get_current_tenant_id] = override_get_tenant
+    app.dependency_overrides[get_tenant_service] = override_get_tenant_service
+
+    # Setup AsyncClient
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    # Cleanup dependency overrides to prevent test contamination
+    app.dependency_overrides.pop(get_current_tenant_id, None)
+    app.dependency_overrides.pop(get_tenant_service, None)
+
+
 # ==========================================================
 # 3. Domain & Infrastructure Mocks
 # ==========================================================
@@ -128,6 +172,14 @@ def mock_document_service() -> AsyncMock:
     """
     return AsyncMock(spec=DocumentService)
 
+@pytest_asyncio.fixture
+def mock_tenant_service() -> AsyncMock:
+    """
+    spec=TenantService ensures the mock raises an AttributeError
+    if a test tries to call a method that doesn't exist on the real class.
+    This prevents "phantom" tests that pass but test nothing.
+    """
+    return AsyncMock(spec=TenantService)
 
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
