@@ -2,7 +2,7 @@ import uuid
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import get_current_tenant_id, get_user_service
 from src.domain.users.dataclasses import UpdateUser, User
@@ -26,8 +26,20 @@ router = APIRouter()
 async def register(
     user: RegisterRequest, tenant_id: TenantIdDep, service: UserServiceDep
 ) -> UserResponse:
+    username = user.username
+    email = user.email
+    if not username or not username.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'username'",
+        )
+    if not email or not email.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'email'",
+        )
     return await service.create(
-        User(user.username, user.email, user.password_hash),
+        User(username, user.email, user.password_hash),
         tenant_id=tenant_id,
     )
 

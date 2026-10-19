@@ -13,17 +13,14 @@ class UserRepository(Protocol):
     ) -> UserEntity:
         raise NotImplementedError("Subclasses must implement create method")
 
-    async def get_one(self, user_id: UUID) -> UserEntity:
-        raise NotImplementedError("Subclasses must implement get_one method")
-
     async def update(
         self,
         user: UserEntity,
     ) -> UserEntity:
         raise NotImplementedError("Subclasses must implement update method")
 
-    async def delete(
-        self,
-        user: UserEntity,
-    ) -> None:
+    async def delete(self, user_id: UUID, tenant_id: UUID) -> None:
         raise NotImplementedError("Subclasses must implement delete method")
+
+    async def get_one(self, user_id: UUID, tenant_id: UUID) -> UserEntity:
+        raise NotImplementedError("Subclasses must implement get_one method")

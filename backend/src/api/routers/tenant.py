@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import get_current_tenant_id, get_tenant_service
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
@@ -56,7 +56,13 @@ async def create_tenant(
     TenantResponse
         The response containing the created tenant.
     """
-    return await service.create(Tenant(request.organisation))
+    organisation_name = request.organisation
+    if not organisation_name or not organisation_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'organisation' name",
+        )
+    return await service.create(Tenant(organisation_name))
 
 
 @router.get(
@@ -137,9 +143,13 @@ async def update_tenant(
     TenantResponse: The response containing the updated tenant.
 
     """
-    return await service.update(
-        UpdateTenant(tenant_id, organisation=request.organisation)
-    )
+    organisation_name = request.organisation
+    if not organisation_name or not organisation_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'organisation' name",
+        )
+    return await service.update(UpdateTenant(tenant_id, organisation=organisation_name))
 
 
 @router.delete(

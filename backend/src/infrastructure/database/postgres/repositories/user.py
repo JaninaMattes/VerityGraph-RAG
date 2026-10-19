@@ -1,8 +1,8 @@
 from uuid import UUID
 
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
@@ -23,7 +23,7 @@ class PostgresUserRepository(UserRepository):
         self,
         session: AsyncSession,
     ):
-        self.session = session
+        self._session = session
 
     async def create(
         self,
@@ -32,47 +32,28 @@ class PostgresUserRepository(UserRepository):
         db_user = UserMapper.to_model(user)
         try:
             # Add new object to session
-            self.session.add(db_user)
-            await self.session.commit()
-            await self.session.refresh(db_user)
+            self._session.add(db_user)
+            await self._session.flush()
+            await self._session.commit()
         except IntegrityError as exc:
-            logger.warning(
-                "Database error as new user %s exists already: %s",
+            await self._session.rollback()
+            logger.error(
+                "Database error as user %s exists already in the database.",
                 user.user_id,
-                exc,
             )
             raise DatabaseOperationException(
                 f"User '{db_user.user_id}' already exists in database."
             ) from exc
+
         except SQLAlchemyError as exc:
-            logger.warning("Database error creating new user %s: %s", user.user_id, exc)
-            await self.session.rollback()
+            await self._session.rollback()
+            logger.error("Database error creating new user %s", user.user_id)
             raise DatabaseInternalException(
                 f"Failed to create new user entry for '{db_user.user_id}' in database."
             ) from exc
 
+        # Triggers lazy load / refresh
         return UserMapper.to_entity(db_user)  # after rerfesh
-
-    async def get_one(self, user_id: UUID) -> UserEntity:
-        try:
-            stmt = select(User).where(User.user_id == user_id)
-            result = await self.session.execute(stmt)
-            db_user: User | None = result.scalar_one_or_none()
-        except SQLAlchemyError as exc:
-            logger.warning("Database error fetching user %s: %s", user_id, exc)
-            await self.session.rollback()
-            raise DatabaseInternalException(
-                f"Raised database related error for '{user_id}'."
-            ) from exc
-
-        if db_user is None:
-            logger.warning(
-                "Raised database related error for %s. The user could not be found.",
-                user_id,
-            )
-            raise UserNotFoundException(user_id=user_id)
-
-        return UserMapper.to_entity(db_user)
 
     async def update(
         self,
@@ -82,32 +63,62 @@ class PostgresUserRepository(UserRepository):
 
         # Merge objects
         try:
-            merged_user = await self.session.merge(db_user)
-            await self.session.commit()
-            await self.session.refresh(merged_user)
+            merged_user = await self._session.merge(db_user)
+            await self._session.flush()
+            await self._session.commit()
         except SQLAlchemyError as exc:
-            logger.warning("Database error updating user %s: %s", user.user_id, exc)
-            await self.session.rollback()
+            await self._session.rollback()
+            logger.error("Database error updating user %s", user.user_id)
+
             raise DatabaseInternalException(
-                f"Failed to update user metadata with ID '{db_user.user_id}'."
+                f"Failed to update user '{db_user.user_id}'."
             ) from exc
 
+        # Triggers lazy load / refresh
         return UserMapper.to_entity(merged_user)  # after refresh
 
-    async def delete(
-        self,
-        user: UserEntity,
-    ) -> None:
-
-        db_user = UserMapper.to_model(user)
+    async def delete(self, user_id: UUID, tenant_id: UUID) -> None:
 
         try:
-            merged_user = await self.session.merge(db_user)
-            await self.session.delete(merged_user)
-            await self.session.commit()
+            stmt = delete(User).where(
+                User.user_id == user_id, User.tenant_id == tenant_id
+            )
+            result = await self._session.execute(stmt)
+            db_user = result.scalar_one_or_none()
+
+            if db_user is None:
+                logger.warning("User with id '%s' could not be found.", user_id)
+                raise UserNotFoundException(user_id)
+
+            # Flush or commit to push the change and catch database-level errors
+            await self._session.flush()
+
         except SQLAlchemyError as exc:
-            logger.warning("Database error removing user %s: %s", user.user_id, exc)
-            await self.session.rollback()
+            await self._session.rollback()
+            logger.error(
+                "Failed to remove document with id '%s' in database.",
+                user_id,
+            )
             raise DatabaseInternalException(
-                f"Failed to remove user metadata with ID '{db_user.user_id}'."
+                f"Failed to remove document metadata for '{user_id}' in database."
             ) from exc
+
+    async def get_one(self, user_id: UUID, tenant_id: UUID) -> UserEntity:
+        try:
+            stmt = select(User).where(
+                User.user_id == user_id, User.tenant_id == tenant_id
+            )
+            result = await self._session.execute(stmt)
+            db_user = result.scalar_one_or_none()
+
+            if db_user is None:
+                logger.warning("User with id '%s' could not be found.", user_id)
+                raise UserNotFoundException(user_id)
+
+        except SQLAlchemyError as exc:
+            logger.error("Database error when fetching user %s", user_id)
+            raise DatabaseInternalException(
+                f"Raised database related error for '{user_id}'."
+            ) from exc
+
+        return UserMapper.to_entity(db_user)
