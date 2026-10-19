@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
@@ -42,10 +42,22 @@ async def create_upload_url(
     PresignedURLResponse
        The response containing the presigned URL and expiration time.
     """
+    filename = request.filename
+    namespace = request.namespace
+    if not filename or not filename.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'filename' or parameter only contains whitespace.",
+        )
+    if not namespace or not namespace.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'namespace' or parameter only contains whitespace.",
+        )
     return await service.create_upload_url(
         tenant_id=tenant_id,
-        filename=request.filename,
-        namespace=request.namespace,
+        filename=filename,
+        namespace=namespace,
     )
 
 

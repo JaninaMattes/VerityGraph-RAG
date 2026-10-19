@@ -84,7 +84,7 @@ class PostgresDocumentRepository(DocumentRepository):
                 logger.exception(
                     "Document with id '%s' could not be found.", document_id
                 )
-                raise DocumentNotFoundException(document_id=document_id)
+                raise DocumentNotFoundException(document_id)
 
         except SQLAlchemyError as exc:
             logger.error(
@@ -103,6 +103,13 @@ class PostgresDocumentRepository(DocumentRepository):
             )
             result = await self._session.execute(stmt)
             db_document = result.scalar_one_or_none()
+
+            if db_document is None:
+                logger.exception(
+                    "Document with id '%s' could not be found.", document_id
+                )
+                raise DocumentNotFoundException(document_id=document_id)
+
         except SQLAlchemyError as exc:
             logger.error(
                 "Database error when fetching document with id '%s'.",
@@ -111,9 +118,5 @@ class PostgresDocumentRepository(DocumentRepository):
             raise DatabaseInternalException(
                 f"Failed to read document metadata for '{document_id}' in database."
             ) from exc
-
-        if db_document is None:
-            logger.exception("Document with id '%s' could not be found.", document_id)
-            raise DocumentNotFoundException(document_id=document_id)
 
         return DocumentMapper.to_entity(db_document)
