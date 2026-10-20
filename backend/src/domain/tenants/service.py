@@ -53,7 +53,7 @@ class TenantService:
                 tenant_id,
             )
             raise TenantServiceException(
-                "Failed to create new tenant.",
+                "Failed to create new tenant",
             ) from exc
 
     async def get(self, tenant_id: uuid.UUID) -> TenantResponse:
@@ -77,7 +77,7 @@ class TenantService:
                 tenant_id,
             )
             raise TenantServiceException(
-                "Failed to find tenant.",
+                "Failed to find tenant information",
             ) from exc
 
     async def update(self, tenant: UpdateTenant) -> TenantResponse:
@@ -105,7 +105,7 @@ class TenantService:
                 tenant.tenant_id,
             )
             raise TenantServiceException(
-                "Failed to update tenant.",
+                "Failed to update tenant",
             ) from exc
 
     async def delete(self, tenant_id: uuid.UUID) -> None:
@@ -122,5 +122,5 @@ class TenantService:
                 tenant_id,
             )
             raise TenantServiceException(
-                "Failed to delete tenant.",
+                "Failed to delete tenant",
             ) from exc

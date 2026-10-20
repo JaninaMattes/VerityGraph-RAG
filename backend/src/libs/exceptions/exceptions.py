@@ -3,6 +3,7 @@ Application exception hierarchy.
 
 Replace existing exceptions with the following structure.
 """
+
 from uuid import UUID
 
 # ============================================================
@@ -70,6 +71,7 @@ class ObjectNotFoundException(NotFoundException):
         self.storage_key = storage_key
         self.bucket_name = bucket_name
 
+
 class BucketNotFoundException(NotFoundException):
     """
     Storage object does not exist.
@@ -85,6 +87,7 @@ class DocumentNotFoundException(NotFoundException):
         super().__init__(f"Document with id '{document_id}' was not found.")
 
         self.document_id = document_id
+
 
 class DocumentChunkNotFoundException(NotFoundException):
     def __init__(self, chunk_id: UUID, chunk_idx: int, document_id: UUID):
@@ -128,6 +131,7 @@ class CredentialsNotFoundException(NotFoundException):
 # Document Exceptions
 # ============================================================
 
+
 class DomainException(ApplicationException):
     """Business rule violations."""
 
@@ -164,6 +168,7 @@ class DatabaseInternalException(DatabaseException):
     """
     General database operation failure.
     """
+
 
 class DatabaseOperationException(DatabaseException):
     """
@@ -224,6 +229,7 @@ class AccessDeniedException(StorageException):
         )
 
         self.bucket_name = bucket_name
+
 
 # ============================================================
 # Event Manager Exceptions
@@ -295,6 +301,7 @@ class AIOKafkaConsumerInvalidMessageException(AIOKafkaConsumerException):
     ):
         super().__init__(message)
 
+
 # ============================================================
 # Service Layer Exceptions
 # ============================================================
@@ -304,6 +311,7 @@ class ServiceException(ApplicationException):
     """
     Base exception for service layer failures.
     """
+
 
 class AuthServiceException(ServiceException):
     """

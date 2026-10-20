@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel
 
 from src.libs.enums.tenant import TenantStatus

@@ -39,29 +39,45 @@ async def register(
             detail="Missing required parameter 'email'",
         )
     return await service.create(
-        User(username, user.email, user.password_hash),
-        tenant_id=tenant_id,
+        User(username, user.email, user.password_hash), tenant_id
     )
 
 
 @router.get(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
 )
-async def read_user(user_id: UUID, service: UserServiceDep) -> UserResponse:
-    return await service.get(user_id)
+async def read_user(
+    user_id: UUID, tenant_id: TenantIdDep, service: UserServiceDep
+) -> UserResponse:
+    return await service.get(user_id, tenant_id)
 
 
 @router.patch(
     "/users/{user_id}", status_code=status.HTTP_200_OK, response_model=UserResponse
 )
 async def update_user(
-    user_id: UUID, request: UpdateUserRequest, service: UserServiceDep
+    user_id: UUID,
+    request: UpdateUserRequest,
+    tenant_id: TenantIdDep,
+    service: UserServiceDep,
 ) -> UserResponse:
-    return await service.update(
-        UpdateUser(user_id, username=request.username, email=request.email)
-    )
+    username = request.username
+    email = request.email
+    if not username or not username.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'username'",
+        )
+    if not email or not email.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required parameter 'email'",
+        )
+    return await service.update(UpdateUser(user_id, tenant_id, username, email))
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_user(user_id: UUID, service: UserServiceDep) -> None:
-    await service.delete(user_id=user_id)
+async def deactivate_user(
+    user_id: UUID, tenant_id: TenantIdDep, service: UserServiceDep
+) -> None:
+    await service.delete(user_id, tenant_id)

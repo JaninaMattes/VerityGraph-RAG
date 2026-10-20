@@ -63,9 +63,9 @@ class UserService:
                 "Failed to create new user.",
             ) from exc
 
-    async def get(self, user_id: uuid.UUID) -> UserResponse:
+    async def get(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> UserResponse:
         try:
-            db_user = await self.user_repository.get_one(user_id)
+            db_user = await self.user_repository.get_one(user_id, tenant_id)
 
             return UserResponse(
                 user_id=db_user.user_id,
@@ -90,7 +90,7 @@ class UserService:
 
     async def update(self, user: UpdateUser) -> UserResponse:
         try:
-            db_user = await self.user_repository.get_one(user.user_id)
+            db_user = await self.user_repository.get_one(user.user_id, user.tenant_id)
 
             # Modulate user details
             db_user.username = user.username
@@ -122,10 +122,10 @@ class UserService:
                 "Failed to update user.",
             ) from exc
 
-    async def delete(self, user_id: uuid.UUID) -> None:
+    async def delete(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         try:
-            db_user = await self.user_repository.get_one(user_id)
-            await self.user_repository.delete(db_user)
+            db_user = await self.user_repository.get_one(user_id, tenant_id)
+            await self.user_repository.delete(db_user.user_id, db_user.tenant_id)
         except DatabaseException:
             raise
 

@@ -52,7 +52,6 @@ class PostgresDocumentRepository(DocumentRepository):
             ) from exc
         return DocumentMapper.to_entity(db_document)  # after refresh
 
-
     async def update(
         self, document: DocumentEntity, idempotency_key: str
     ) -> DocumentEntity:

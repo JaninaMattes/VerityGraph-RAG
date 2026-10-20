@@ -36,6 +36,7 @@ logger = get_logger("api.dependencies")
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
+
 # TODO: NEEDS TO BE REPLACED WITH A REAL AUTH PROVIDER
 async def get_current_tenant_id(settings: SettingsDep) -> uuid.UUID:
     """

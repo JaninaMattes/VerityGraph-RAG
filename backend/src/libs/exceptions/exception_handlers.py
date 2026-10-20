@@ -117,6 +117,7 @@ async def service_exception_handler(
         },
     )
 
+
 async def event_handler_exception_handler(
     request: Request, exc: EventHandlerException
 ) -> JSONResponse:
@@ -132,6 +133,7 @@ async def event_handler_exception_handler(
             "message": "A service error occured.",
         },
     )
+
 
 async def unexpected_exception_handler(
     request: Request,

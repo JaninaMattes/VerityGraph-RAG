@@ -20,5 +20,6 @@ class UpdateUser:
     """
 
     user_id: UUID
+    tenant_id: UUID
     username: str
     email: str

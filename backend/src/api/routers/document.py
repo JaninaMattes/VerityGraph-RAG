@@ -18,6 +18,7 @@ router = APIRouter()
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
+
 @router.post(
     "/documents",
     status_code=status.HTTP_201_CREATED,

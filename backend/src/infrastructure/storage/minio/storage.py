@@ -19,6 +19,7 @@ from src.libs.exceptions.exceptions import (
 
 logger = get_logger("api.infra.minio")
 
+
 class MinioStorage(StorageProvider):
     def __init__(
         self,

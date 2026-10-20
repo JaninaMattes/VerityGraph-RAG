@@ -84,7 +84,7 @@ class PostgresTenantRepository(TenantRepository):
             db_tenant = result.scalar_one_or_none()
 
             if db_tenant is None:
-                logger.warning("Tenant with id '%s' could not be found.", tenant_id)
+                logger.exception("A tenant with id '%s' could not be found.", tenant_id)
                 raise TenantNotFoundException(tenant_id)
 
             await self._session.flush()
@@ -105,6 +105,10 @@ class PostgresTenantRepository(TenantRepository):
             result = await self._session.execute(stmt)
             db_tenant = result.scalar_one_or_none()
 
+            if db_tenant is None:
+                logger.exception("A tenant with id '%s' could not be found.", tenant_id)
+                raise TenantNotFoundException(tenant_id)
+
         except SQLAlchemyError as exc:
             await self._session.rollback()
             logger.error("Database error fetching tenant %s: %s", tenant_id, exc)
@@ -112,12 +116,5 @@ class PostgresTenantRepository(TenantRepository):
             raise DatabaseInternalException(
                 f"Failed to read tenant information for '{tenant_id}' in the database."
             ) from exc
-
-        if db_tenant is None:
-            logger.warning(
-                "Raised database related error for %s. The tenant could not be found.",
-                tenant_id,
-            )
-            raise TenantNotFoundException(tenant_id)
 
         return TenantMapper.to_entity(db_tenant)
