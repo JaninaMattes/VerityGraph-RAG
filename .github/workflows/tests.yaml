@@ -71,7 +71,14 @@ jobs:
           TEMPORAL_TASK_QUEUE=ci-task-queue
           FRONTEND_URL=http://localhost:3000
           EOF
-          
+      
+      - name: Run Ruff Linter
+        working-directory: ./backend
+        run: uv run ruff check --output-format=github .
+
+      - name: Run Ruff Formatter
+        working-directory: ./backend
+        run: uv run ruff format --check .
       - name: Run tests
         working-directory: ./backend
         # Create results for analytics dashboard
@@ -79,7 +86,7 @@ jobs:
 
       # Upload test results as artifacts
       - name: Upload test results
-        if: always() && !env.ACT # <-- Added && !env.ACT to skip in local 'act' runs
+        if: always() && !env.ACT 
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3 (Pinned SHA)
         with:
           name: pytest-report-${{ github.run_id }}
