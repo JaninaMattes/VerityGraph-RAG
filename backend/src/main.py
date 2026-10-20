@@ -18,6 +18,7 @@ settings = get_settings()
 setup_logging(log_level=settings.log_level)
 logger = get_logger("api.main")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Startup phase

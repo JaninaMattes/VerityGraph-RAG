@@ -1,8 +1,9 @@
 from datetime import timedelta
 
-from httpx import AsyncClient
 import pytest
 from fastapi import status
+from httpx import AsyncClient
+
 from src.libs.exceptions.exceptions import DocumentNotFoundException
 from src.libs.schemas.document import PresignedURLResponse
 
@@ -23,7 +24,7 @@ class TestDocumentAPIEndpoints:
     # POST /documents (Create Upload URL)
     # ---------------------------------------------------------
 
-    async def test_create_upload_url_returns_201_and_presigned_url(
+    async def test_create_upload_url_returns_201_and_presigned_url_when_ok(
         self,
         doc_client,
         mock_document_service,
@@ -64,13 +65,13 @@ class TestDocumentAPIEndpoints:
             tenant_id=mock_tenant_id, filename="contract.pdf", namespace="files"
         )
 
-    async def test_create_new_document_and_handle_empty_parameter_returns_400(
+    async def test_create_new_document_and_handle_empty_parameter_returns_400_when_bad_request(
         self, doc_client: AsyncClient
     ):
         """
         GIVEN the application is running in the testing environment
         WHEN a HTTP POST request is made against '/api/v1/documents' with the request parameter 'filename' is empty
-        THEN a HTTP status code of 400 with the message that the parameter is missing is returned
+        THEN a HTTP status code of 400 bad request with the message that the parameter is missing is returned
         """
 
         # 1. Arrange
@@ -83,7 +84,7 @@ class TestDocumentAPIEndpoints:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json() == {"detail": "Missing required parameter 'filename'"}
 
-    async def test_create_upload_url_and_handle_missing_doc_returns_422(
+    async def test_create_upload_url_and_handle_missing_doc_returns_422_when_unprocessable(
         self, doc_client: AsyncClient
     ):
         """

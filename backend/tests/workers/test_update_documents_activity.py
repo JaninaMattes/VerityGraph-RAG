@@ -2,10 +2,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
+from temporalio.exceptions import ApplicationError
+
 from src.infrastructure.workflow_execution.temporalio.models import (
     UpdateDocumentPayload,
 )
-from temporalio.exceptions import ApplicationError
 
 # Apply to all tests in this module
 pytestmark = pytest.mark.asyncio

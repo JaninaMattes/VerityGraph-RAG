@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl, PostgresDsn, RedisDsn, SecretStr
+
 from src.api.dependencies import (
     get_current_tenant_id,
     get_document_service,
@@ -39,9 +40,11 @@ def mock_document_id() -> uuid.UUID:
 def mock_document_name() -> str:
     return "contract.pdf"
 
+
 @pytest.fixture
 def mock_tenant_organisation() -> str:
     return "Test Organisation"
+
 
 @pytest.fixture
 def test_settings() -> Settings:
@@ -93,7 +96,7 @@ def override_global_dependencies(test_settings: Settings):
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
+async def client() -> AsyncGenerator[AsyncClient]:
     """Provides an isolated AsyncClient for FastAPI testing."""
     # Setup AsyncClient with ASGI transport for in-process testing
     transport = ASGITransport(app=app)
@@ -105,7 +108,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def doc_client(
     mock_document_service: AsyncMock, mock_tenant_id: uuid.UUID
-) -> AsyncGenerator[AsyncClient, None]:
+) -> AsyncGenerator[AsyncClient]:
     """
     Provides an isolated AsyncClient for API testing.
     """
@@ -133,7 +136,7 @@ async def doc_client(
 @pytest_asyncio.fixture
 async def tenant_client(
     mock_tenant_service: AsyncMock, mock_tenant_id: uuid.UUID
-) -> AsyncGenerator[AsyncClient, None]:
+) -> AsyncGenerator[AsyncClient]:
     """
     Provides an isolated AsyncClient for API testing.
     """
@@ -172,6 +175,7 @@ def mock_document_service() -> AsyncMock:
     """
     return AsyncMock(spec=DocumentService)
 
+
 @pytest_asyncio.fixture
 def mock_tenant_service() -> AsyncMock:
     """
@@ -180,6 +184,7 @@ def mock_tenant_service() -> AsyncMock:
     This prevents "phantom" tests that pass but test nothing.
     """
     return AsyncMock(spec=TenantService)
+
 
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
@@ -201,7 +206,7 @@ def mock_session_factory(mock_db_session: AsyncMock) -> MagicMock:
 
 
 @pytest.fixture
-def activities(mock_session_factory: MagicMock) -> "IngestFileActivities":
+def activities(mock_session_factory: MagicMock) -> IngestFileActivities:
     """
     Instantiates the Temporal Activities class with all dependencies mocked.
     """
