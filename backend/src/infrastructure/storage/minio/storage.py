@@ -1,17 +1,16 @@
+"""MinIO adapter for the StorageProvider port."""
+
 from datetime import timedelta
 
 from minio import Minio, S3Error
 from minio.helpers import DictType
-from minio.sse import SseCustomerKey
 
-from src.domain.documents.dataclasses import (
-    StorageKey,
-    StoredFile,
-)
-from src.infrastructure.storage.provider import StorageProvider
+from src.domain.documents.dataclasses import StorageKey, StoredFile
+from src.domain.documents.storage import StorageProvider
 from src.libs.core.logger import get_logger
 from src.libs.exceptions.exceptions import (
     AccessDeniedException,
+    ApplicationException,
     BucketNotFoundException,
     ObjectNotFoundException,
     StorageOperationException,
@@ -19,44 +18,44 @@ from src.libs.exceptions.exceptions import (
 
 logger = get_logger("api.infra.minio")
 
+ACCESS_DENIED_CODES = ("AccessDenied", "InvalidAccessKeyId")
+METADATA_PREFIX = "x-amz-meta-"
+
 
 class MinioStorage(StorageProvider):
-    def __init__(
-        self,
-        client: Minio,
-        bucket_name: str,
-        sse_key: SseCustomerKey | None = None,
-    ) -> None:
+    """Stores documents in one MinIO bucket. Every S3Error becomes a domain exception."""
+
+    def __init__(self, client: Minio, bucket_name: str) -> None:
         self.client = client
         self.bucket_name = bucket_name
-        self.sse_key = sse_key
+
+    def _to_domain_error(
+        self, exc: S3Error, action: str, object_name: str | None = None
+    ) -> ApplicationException:
+        """Return the domain exception for the S3 error code of a failed `action`."""
+        logger.warning(
+            "MinIO failed to %s (%s): %s", action, exc.code, object_name or ""
+        )
+        if exc.code == "NoSuchBucket":
+            return BucketNotFoundException(bucket_name=self.bucket_name)
+        if exc.code == "NoSuchKey" and object_name:
+            return ObjectNotFoundException(
+                storage_key=object_name, bucket_name=self.bucket_name
+            )
+        if exc.code in ACCESS_DENIED_CODES:
+            return AccessDeniedException(bucket_name=self.bucket_name)
+        return StorageOperationException(
+            self.bucket_name, description=f"Failed to {action}."
+        )
 
     def create_bucket(self) -> None:
-        """Checks if bucket already exists for warm start."""
+        """Create the bucket if it does not exist."""
         try:
-            found = self.client.bucket_exists(bucket_name=self.bucket_name)
-            if not found:
+            if not self.client.bucket_exists(bucket_name=self.bucket_name):
                 self.client.make_bucket(bucket_name=self.bucket_name)
-                logger.info(f"A bucket with name {self.bucket_name} was created.")
-            else:
-                logger.info(f"A bucket with name {self.bucket_name} already exists.")
+                logger.info("Created bucket %s.", self.bucket_name)
         except S3Error as exc:
-            if exc.code in ("AccessDenied", "InvalidAccessKeyId"):
-                logger.warning(
-                    "Access to bucket %s denied due to missing permissions or bad credentials.",
-                    self.bucket_name,
-                )
-                raise AccessDeniedException(
-                    bucket_name=self.bucket_name,
-                ) from exc
-            logger.warning(
-                "Failed creating bucket %s.",
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                self.bucket_name,
-                description=f"Creating bucket '{self.bucket_name}' failed.",
-            ) from exc
+            raise self._to_domain_error(exc, "create the bucket") from exc
 
     def create_presigned_url(
         self,
@@ -65,28 +64,16 @@ class MinioStorage(StorageProvider):
         method: str,
         user_metadata: dict[str, str] | None = None,
     ) -> str:
-        """
-        Generate a presigned URL for an object in storage.
-
-        :param storage_key: The canonical storage key dataclass.
-        :param expires_at: Expiration time for the URL.
-        :param method: HTTP method (e.g., "PUT" or "GET").
-        :param user_metadata: Optional metadata to be cryptographically signed
-                              into the URL (only applicable for "PUT").
-        :return: The presigned URL string.
-        """
-        normalized_method = method.upper()
+        """Return a presigned URL. Only PUT URLs sign `user_metadata` as 'x-amz-meta-*'."""
+        method = method.upper()
         extra_query_params: DictType | None = None
-
-        if user_metadata and normalized_method == "PUT":
-            extra_query_params = {
-                (
-                    k.lower()
-                    if k.lower().startswith("x-amz-meta-")
-                    else f"x-amz-meta-{k.lower()}"
-                ): str(v)
-                for k, v in user_metadata.items()
-            }
+        if user_metadata and method == "PUT":
+            extra_query_params = {}
+            for key, value in user_metadata.items():
+                name = key.lower()
+                if not name.startswith(METADATA_PREFIX):
+                    name = METADATA_PREFIX + name
+                extra_query_params[name] = str(value)
 
         try:
             return self.client.get_presigned_url(
@@ -97,139 +84,46 @@ class MinioStorage(StorageProvider):
                 extra_query_params=extra_query_params,
             )
         except S3Error as exc:
-            if exc.code == "NoSuchBucket":
-                logger.warning(
-                    "The specified bucket %s does not exist.",
-                    self.bucket_name,
-                )
-                raise BucketNotFoundException(bucket_name=self.bucket_name)
-            if exc.code == "NoSuchKey":
-                logger.warning(
-                    "The specified object key %s does not exist in the bucket %s.",
-                    storage_key,
-                    self.bucket_name,
-                )
-                raise ObjectNotFoundException(
-                    storage_key=storage_key.value,
-                    bucket_name=self.bucket_name,
-                ) from exc
-            logger.warning(
-                "Failed generating presigned %s URL for object %s from bucket %s.",
-                method,
-                storage_key,
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                self.bucket_name,
-                description=f"Generation of presigned '{method}' URL for object '{storage_key}' failed.",
+            raise self._to_domain_error(
+                exc, f"sign a {method} URL", storage_key.value
             ) from exc
 
-    def get_obj_metadata(
-        self,
-        storage_key: StorageKey,
-    ) -> StoredFile:
-        """Get 'bucket-object' information from MinIO bucket.
-        :param storage_key: The object key of the file to get information from
-        :return: 'bucket-object' meta information
-        """
+    def get_obj_metadata(self, storage_key: StorageKey) -> StoredFile:
+        """Return the object metadata. An unknown size is reported as -1."""
         try:
-            metadata = self.client.stat_object(
-                bucket_name=self.bucket_name,
-                object_name=storage_key.value,
-            )
-            assert metadata.size is not None
-            return StoredFile(
-                storage_key=storage_key,
-                mime_type=metadata.content_type,
-                size_bytes=metadata.size,
-                bucket_name=metadata.bucket_name,
-                version_id=metadata.version_id,
-                etag=metadata.etag,
+            stat = self.client.stat_object(
+                bucket_name=self.bucket_name, object_name=storage_key.value
             )
         except S3Error as exc:
-            if exc.code == "NoSuchKey":
-                logger.warning(
-                    "The specified object key %s does not exist in the bucket %s.",
-                    storage_key,
-                    self.bucket_name,
-                )
-                raise ObjectNotFoundException(
-                    storage_key=storage_key.value,
-                    bucket_name=self.bucket_name,
-                ) from exc
-            logger.warning(
-                "Failed to extract statistical data for object %s from bucket %s.",
-                storage_key,
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                self.bucket_name,
-                description=f"Gathering statistical data for '{storage_key}' failed.",
+            raise self._to_domain_error(
+                exc, "read metadata", storage_key.value
             ) from exc
+        return StoredFile(
+            storage_key=storage_key,
+            mime_type=stat.content_type,
+            size_bytes=stat.size if stat.size is not None else -1,
+            bucket_name=stat.bucket_name,
+            version_id=stat.version_id,
+            etag=stat.etag,
+        )
 
     def delete_object(self, storage_key: StorageKey) -> None:
-        """Delete file from S3 bucket.
-
-        :param storage_key: The object key of the file to delete
-        """
+        """Delete the object."""
         try:
             self.client.remove_object(
-                bucket_name=self.bucket_name,
-                object_name=storage_key.value,
+                bucket_name=self.bucket_name, object_name=storage_key.value
             )
         except S3Error as exc:
-            if exc.code == "NoSuchKey":
-                logger.warning(
-                    "Object %s does not exist in bucket %s.",
-                    storage_key,
-                    self.bucket_name,
-                )
-                raise ObjectNotFoundException(
-                    storage_key=storage_key.value,
-                    bucket_name=self.bucket_name,
-                ) from exc
-
-            if exc.code in ("AccessDenied", "InvalidAccessKeyId"):
-                logger.warning(
-                    "Access denied while deleting %s from bucket %s.",
-                    storage_key,
-                    self.bucket_name,
-                )
-                raise AccessDeniedException(
-                    bucket_name=self.bucket_name,
-                ) from exc
-            logger.warning(
-                "Failed deleting object %s from bucket %s.",
-                storage_key,
-                self.bucket_name,
-            )
-            raise StorageOperationException(
-                self.bucket_name,
-                description=f"Deleting object '{storage_key}' failed.",
+            raise self._to_domain_error(
+                exc, "delete the object", storage_key.value
             ) from exc
 
     def download_object(self, bucket: str, storage_key: str, file_path: str) -> None:
-        """Download file from S3 bucket to local file system.
-        :param bucket: The bucket name.
-        :param storage_key: The storage key.
-        :param target_path: The temporary target path.
-        """
+        """Download the object from `bucket` to the local `file_path`."""
         try:
             self.client.fget_object(bucket, storage_key, file_path=file_path)
-            logger.info(
-                "Downloaded object %s from bucket %s to %s.",
-                storage_key,
-                bucket,
-                file_path,
-            )
         except S3Error as exc:
-            if exc.code == "NoSuchKey":
-                logger.warning(
-                    "Object %s does not exist in bucket %s.",
-                    storage_key,
-                    self.bucket_name,
-                )
-                raise ObjectNotFoundException(
-                    storage_key=storage_key,
-                    bucket_name=self.bucket_name,
-                ) from exc
+            raise self._to_domain_error(
+                exc, "download the object", storage_key
+            ) from exc
+        logger.info("Downloaded object %s from bucket %s.", storage_key, bucket)
