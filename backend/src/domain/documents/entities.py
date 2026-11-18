@@ -64,13 +64,7 @@ class DocumentEntity:
         self.deleted_at = deleted_at
         self.deleted_by = deleted_by
 
-    def mark_ready(
-        self,
-        *,
-        language: LanguageType,
-        parser_version: str,
-        embedding_version: str,
-    ) -> None:
+    def mark_ready(self, *, language: LanguageType) -> None:
         self.status = DocumentStatus.READY
         self.language = language
         self.updated_at = datetime.now(UTC)
@@ -114,5 +108,5 @@ class DocumentEntity:
             f"DocumentEntity("
             f"document_id={self.document_id!r}, "
             f"tenant_id={self.tenant_id!r}, "
-            f"filename={self.filename!r}"
+            f"filename={self.filename!r})"
         )

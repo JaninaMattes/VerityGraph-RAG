@@ -5,20 +5,20 @@ from src.domain.ingestions.entities import IngestionJobEntity
 
 
 class IngestionJobRepository(Protocol):
-    """The repository layer handles all CRUD requests against a databse."""
+    """Persistence port for ingestion jobs. Implementations flush but never commit."""
 
-    async def create(
-        self, job: IngestionJobEntity, idempotency_key: str
-    ) -> IngestionJobEntity:
-        raise NotImplementedError("Subclasses must implement create method")
+    async def create(self, job: IngestionJobEntity) -> IngestionJobEntity:
+        """Insert the job, or overwrite it if it exists (safe for retries)."""
+        raise NotImplementedError
 
-    async def update(
-        self, job: IngestionJobEntity, idempotency_key: str
-    ) -> IngestionJobEntity:
-        raise NotImplementedError("Subclasses must implement update method")
+    async def update(self, job: IngestionJobEntity) -> IngestionJobEntity:
+        """Save the changed job."""
+        raise NotImplementedError
 
     async def delete(self, job_id: UUID, document_id: UUID) -> None:
-        raise NotImplementedError("Subclasses must implement delete method")
+        """Delete the job. Raise IngestionJobNotFoundException if it does not exist."""
+        raise NotImplementedError
 
     async def get_one(self, job_id: UUID, document_id: UUID) -> IngestionJobEntity:
-        raise NotImplementedError("Subclasses must implement get_one method")
+        """Return the job. Raise IngestionJobNotFoundException if it does not exist."""
+        raise NotImplementedError
