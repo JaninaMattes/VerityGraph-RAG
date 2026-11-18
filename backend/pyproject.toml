@@ -1,34 +1,37 @@
 [project]
-name = "uv-fastapi-backend"
+name = "veritygraph-backend"
 version = "0.1.0"
-description = "Fast API project"
+description = "VerityGraph backend: FastAPI service and the Temporal/Kafka ingestion worker"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "accelerate>=1.14.0",
+    "aiokafka>=0.14.0",
     "alembic>=1.18.5",
+    "asyncpg>=0.31.0",
     "fastapi[all,standard]>=0.139.0",
-    "httpx>=0.28.1",
     "minio>=7.2.20",
-    "postgres>=4.0",
-    "prometheus-client>=0.25.0",
-    "psycopg[binary,pool]>=3.3.4",
     "pydantic[email]>=2.13.4",
     "pydantic-settings>=2.14.2",
-    "python-dotenv>=1.2.2",
     "sqlalchemy[asyncio]>=2.0.51",
     "structlog>=26.1.0",
     "temporalio[langgraph]>=1.30.0",
-    "torch>=2.13.0",
-    "transformers>=5.13.1",
-    "asyncpg>=0.31.0",
-    "gunicorn>=26.2.0",
     "uvicorn>=0.52.4",
-    "aiokafka>=0.14.0",
 ]
 
 [tool.fastapi]
 entrypoint = "src.main:app"
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_also = [
+    "raise NotImplementedError",  # Protocol method bodies
+    "if __name__ == .__main__.:",
+    "if typing.TYPE_CHECKING:",
+]
 
 [dependency-groups]
 dev = [
