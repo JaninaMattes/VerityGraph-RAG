@@ -1,47 +1,42 @@
-# src/domain/documents/service.py
+"""Document use cases: presigned upload and download URLs."""
 
 import asyncio
 import uuid
 from datetime import timedelta
 
-from src.domain.documents.dataclasses import StorageKey
+from src.domain.documents.dataclasses import PresignedUrl, StorageKey
 from src.domain.documents.repository import DocumentRepository
-from src.infrastructure.storage.provider import StorageProvider
+from src.domain.documents.storage import StorageProvider
 from src.libs.core.logger import get_logger
-from src.libs.exceptions.exceptions import (
-    BucketNotFoundException,
-    DatabaseException,
-    DocumentServiceException,
-    NotFoundException,
-    StorageException,
-)
-from src.libs.schemas.document import (
-    PresignedURLResponse,
-)
+from src.libs.exceptions.exceptions import BucketNotFoundException
 
 logger = get_logger("api.domain.doc.service")
 
+UPLOAD_URL_TTL = timedelta(minutes=15)
+DOWNLOAD_URL_TTL = timedelta(minutes=5)
+
 
 class DocumentService:
-    """The service layer defines the business logic that ineracts with the repository."""
+    """Issues presigned URLs so that file bytes never pass through the API.
+
+    Storage and database errors propagate unchanged to the caller.
+    """
 
     def __init__(
-        self,
-        storage: StorageProvider,
-        doc_repository: DocumentRepository,
+        self, storage: StorageProvider, doc_repository: DocumentRepository
     ) -> None:
         self.doc_repository = doc_repository
         self.storage = storage
 
     async def create_upload_url(
-        self,
-        tenant_id: uuid.UUID,  # Injected from settings/dependency
-        filename: str,
-        namespace: str = "files",
-    ) -> PresignedURLResponse:
-        """Create presigned PUT URL to upload file to S3 bucket."""
+        self, tenant_id: uuid.UUID, filename: str, namespace: str = "files"
+    ) -> PresignedUrl:
+        """Return a presigned PUT URL for a new document of the tenant.
 
-        # Create storage key
+        The tenant id, filename and document type are signed into the URL as object
+        metadata; the ingestion worker reads them from the upload event. If the bucket
+        is missing, it is created once and signing is retried.
+        """
         document_id = uuid.uuid4()
         storage_key = StorageKey.document(
             document_id=document_id,
@@ -58,63 +53,27 @@ class DocumentService:
             "document_type": document_type,
         }
 
-        expires_at = timedelta(minutes=15)  # 15 mins expiration time
-
-        async def _create_presigned_url() -> str:
-            return await asyncio.to_thread(
-                self.storage.create_presigned_url,
+        def sign() -> str:
+            return self.storage.create_presigned_url(
                 storage_key=storage_key,
-                expires_at=expires_at,
+                expires_at=UPLOAD_URL_TTL,
                 method="PUT",
                 user_metadata=user_metadata,
             )
 
         try:
-            # Create presigned URL
-            presigned_url = await _create_presigned_url()
+            url = await asyncio.to_thread(sign)
         except BucketNotFoundException:
-            logger.exception(
-                "The specified bucket was not found. Trying to auto-create the missing bucket."
+            logger.warning(
+                "Bucket is missing. Creating it and retrying the upload URL."
             )
-            try:
-                await asyncio.to_thread(
-                    self.storage.create_bucket,
-                )
-            except StorageException as bucket_exc:
-                logger.exception(
-                    "Failed to auto-create bucket for tenant %s.", tenant_id
-                )
-                raise DocumentServiceException(
-                    "Failed to initialize storage for file upload."
-                ) from bucket_exc
+            await asyncio.to_thread(self.storage.create_bucket)
+            url = await asyncio.to_thread(sign)
 
-            try:
-                # Auto-retry creating presigned URL
-                presigned_url = await _create_presigned_url()
-            except Exception as retry_exc:
-                logger.exception(
-                    "Failed generating presigned URL for document %s after auto-creating missing bucket.",
-                    document_id,
-                )
-                raise DocumentServiceException(
-                    "Failed to initialize file upload."
-                ) from retry_exc
-
-        except StorageException:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "System failure when generating upload signatures for document %s.",
-                document_id,
-            )
-            raise DocumentServiceException(
-                "Failed to initialize file upload.",
-            ) from exc
-
-        return PresignedURLResponse(
+        return PresignedUrl(
             document_id=document_id,
-            url=presigned_url,
-            expires_at=expires_at,
+            url=url,
+            expires_at=UPLOAD_URL_TTL,
             required_headers={
                 "x-amz-meta-tenant-id": str(tenant_id),
                 "x-amz-meta-filename": filename,
@@ -123,45 +82,29 @@ class DocumentService:
         )
 
     async def get_download_url(
-        self,
-        document_id: uuid.UUID,
-        tenant_id: uuid.UUID,  # Injected from settings/dependency
-    ) -> PresignedURLResponse:
-        """Create presigned GET URL to download file from S3 bucket."""
-        try:
-            # Check first if file is there
-            db_document = await self.doc_repository.get_one(document_id, tenant_id)
+        self, document_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> PresignedUrl:
+        """Return a presigned GET URL for a document of the tenant.
 
-            expires_at = timedelta(minutes=5)  # 5 mins expiration time
-            presigned_url = await asyncio.to_thread(
-                self.storage.create_presigned_url,
-                storage_key=db_document.storage_key,
-                expires_at=expires_at,
-                method="GET",
-            )
-            return PresignedURLResponse(
-                document_id=document_id,
-                url=presigned_url,
-                expires_at=expires_at,
-                required_headers={
-                    "x-amz-meta-tenant-id": str(db_document.tenant_id),
-                    "x-amz-meta-filename": db_document.filename,
-                    "x-amz-meta-document-type": db_document.document_type.value
-                    if db_document.document_type
-                    else "unknown",
-                },
-            )
-        except DatabaseException:
-            raise
-        except StorageException:
-            raise
-        except NotFoundException:
-            raise
-        except Exception as exc:
-            logger.exception(
-                "Unexpected error occured when generating presigned GET URL for document %s.",
-                document_id,
-            )
-            raise DocumentServiceException(
-                "Failed to initialize file download.",
-            ) from exc
+        Raise DocumentNotFoundException if the tenant has no such document.
+        """
+        document = await self.doc_repository.get_one(document_id, tenant_id)
+        url = await asyncio.to_thread(
+            self.storage.create_presigned_url,
+            storage_key=document.storage_key,
+            expires_at=DOWNLOAD_URL_TTL,
+            method="GET",
+        )
+        document_type = (
+            document.document_type.value if document.document_type else "unknown"
+        )
+        return PresignedUrl(
+            document_id=document_id,
+            url=url,
+            expires_at=DOWNLOAD_URL_TTL,
+            required_headers={
+                "x-amz-meta-tenant-id": str(document.tenant_id),
+                "x-amz-meta-filename": document.filename,
+                "x-amz-meta-document-type": document_type,
+            },
+        )

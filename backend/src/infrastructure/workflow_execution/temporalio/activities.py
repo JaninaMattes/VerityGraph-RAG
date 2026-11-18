@@ -1,17 +1,28 @@
-# src/infrastructure/workflow_execution/temporalio/activities.py
+"""Temporal activities of the document ingestion workflow.
+
+Each database activity uses its own session and commits once at the end. Errors are
+classified for Temporal's retry policy:
+- invalid payload values (ValueError)   -> non-retryable 'DataValidationFailure';
+- missing records (NotFoundException)   -> non-retryable 'NotFound';
+- any other error (database, network)   -> retryable 'DatabaseFailure'.
+"""
 
 import asyncio
-import os
 import tempfile
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from enum import Enum
+from pathlib import Path, PurePosixPath
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from temporalio import activity
-from temporalio.exceptions import ApplicationError, CancelledError
+from temporalio.exceptions import ApplicationError
 
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
+from src.domain.documents.storage import StorageProvider
 from src.domain.ingestions.entities import IngestionJobEntity
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
@@ -19,7 +30,6 @@ from src.infrastructure.database.postgres.repositories.document import (
 from src.infrastructure.database.postgres.repositories.ingestionjobs import (
     PostgresIngestionJobRepository,
 )
-from src.infrastructure.storage.provider import StorageProvider
 from src.infrastructure.workflow_execution.temporalio.models import (
     CreateDocumentPayload,
     CreateIngestionJobPayload,
@@ -31,293 +41,181 @@ from src.infrastructure.workflow_execution.temporalio.models import (
 from src.libs.enums.document import DocumentStatus, DocumentType
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 from src.libs.enums.storage import StorageType
-from src.libs.exceptions.exceptions import (
-    DocumentNotFoundException,
-    IngestionJobNotFoundException,
+from src.libs.exceptions.exceptions import AccessDeniedException, NotFoundException
+
+# Status name in the payload -> domain transition of the document.
+DOCUMENT_TRANSITIONS: dict[str, Callable[[DocumentEntity], None]] = {
+    "UPLOADED": DocumentEntity.mark_uploaded,
+    "PROCESSED": DocumentEntity.mark_processed,
+    "FAILED": DocumentEntity.mark_failed,
+}
+
+# Errors that a retry of process_document_activity cannot fix.
+PERMANENT_PROCESSING_ERRORS = (
+    FileNotFoundError,
+    NotFoundException,
+    AccessDeniedException,
 )
-from src.pipelines.ingestion.pipeline import IngestionPipeline
+
+
+def parse_enum[E: Enum](enum_cls: type[E], name: str) -> E:
+    """Return the member of `enum_cls` named `name` (case-insensitive).
+
+    Raise ValueError for an unknown name.
+    """
+    try:
+        return enum_cls[name.upper()]
+    except KeyError:
+        raise ValueError(f"'{name}' is not a valid {enum_cls.__name__}.") from None
+
+
+@contextmanager
+def _activity_errors(action: str) -> Iterator[None]:
+    """Translate errors raised while doing `action` to classified ApplicationErrors."""
+    try:
+        yield
+    except ValueError as exc:
+        raise ApplicationError(
+            f"Invalid payload: {exc}", non_retryable=True, type="DataValidationFailure"
+        ) from exc
+    except NotFoundException as exc:
+        raise ApplicationError(str(exc), non_retryable=True, type="NotFound") from exc
+    except Exception as exc:
+        activity.logger.exception("Failed to %s.", action)
+        raise ApplicationError(f"Failed to {action}.", type="DatabaseFailure") from exc
 
 
 class IngestFileActivities:
+    """Activities with their dependencies. Register the bound methods on a Worker."""
+
     def __init__(
         self,
-        session_factory: async_sessionmaker,
+        session_factory: async_sessionmaker[AsyncSession],
         storage: StorageProvider,
-        ingestion_pipeline: IngestionPipeline,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
 
     @activity.defn(name="create_document_activity")
     async def create_document_activity(self, payload: CreateDocumentPayload) -> None:
-        info = activity.info()
-        idempotency_key = f"{info.workflow_run_id}-{info.activity_id}"
-        activity.logger.info(
-            "Creating new document with id %s and status %s.",
-            payload.document_id,
-            payload.status,
-        )
-
-        # Explicit Transaction Management with guaranteed rollback
-        async with self._session_factory() as session:
-            try:
-                try:
-                    doc_type = DocumentType[payload.document_type.upper()]
-                    doc_status = DocumentStatus[payload.status.upper()]
-                    storage_type = StorageType[payload.storage_type.upper()]
-                except KeyError as exc:
-                    # Raises native KeyError. Data error hence mark as non-retryable.
-                    raise ApplicationError(
-                        f"Invalid payload value: {exc}. Expected a valid enum string.",
-                        non_retryable=True,
-                        type="DataValidationFailure",
-                    ) from exc
-
-                doc_repository = PostgresDocumentRepository(session)
-
-                # Build database entity
-                now = datetime.now(UTC)
-                doc_entity = DocumentEntity(
-                    document_id=UUID(payload.document_id),
-                    tenant_id=UUID(payload.tenant_id),
-                    filename=payload.filename,
-                    mime_type=payload.mime_type,
-                    document_type=doc_type,
-                    bucket_name=payload.bucket_name,
-                    storage_key=StorageKey(value=payload.storage_key),
-                    storage_type=storage_type,
-                    status=doc_status,
-                    created_at=now,
-                    updated_at=now,
-                )
-                await doc_repository.create(doc_entity, idempotency_key=idempotency_key)
+        """Store the uploaded document. Safe to retry: an existing row is overwritten."""
+        with _activity_errors(f"create document {payload.document_id}"):
+            now = datetime.now(UTC)
+            document = DocumentEntity(
+                document_id=UUID(payload.document_id),
+                tenant_id=UUID(payload.tenant_id),
+                filename=payload.filename,
+                mime_type=payload.mime_type,
+                document_type=parse_enum(DocumentType, payload.document_type),
+                bucket_name=payload.bucket_name,
+                storage_key=StorageKey(value=payload.storage_key),
+                storage_type=parse_enum(StorageType, payload.storage_type),
+                status=parse_enum(DocumentStatus, payload.status),
+                created_at=now,
+                updated_at=now,
+            )
+            async with self._session_factory() as session:
+                await PostgresDocumentRepository(session).create(document)
                 await session.commit()
-
-            except ApplicationError:
-                raise
-            except Exception as exc:
-                # Database error will be handled by temporal
-                activity.logger.exception(
-                    "Unexpected system failure creating document with id '%s'.",
-                    payload.document_id,
-                )
-                raise ApplicationError(
-                    f"Failed to create document {payload.document_id} in database.",
-                    non_retryable=False,
-                    type="DatabaseFailure",
-                ) from exc
 
     @activity.defn(name="update_document_activity")
     async def update_document_activity(self, payload: UpdateDocumentPayload) -> None:
-        info = activity.info()
-        idempotency_key = f"{info.workflow_run_id}-{info.activity_id}"
-
-        activity.logger.info(
-            "Updating document %s to status %s.", payload.document_id, payload.status
-        )
-
-        # Explicit Transaction Management with guaranteed rollback
-        async with self._session_factory() as session:
-            try:
-                doc_repository = PostgresDocumentRepository(session)
-                doc_uuid = UUID(payload.document_id)
-                tenant_uuid = UUID(payload.tenant_id)
-                db_document = await doc_repository.get_one(doc_uuid, tenant_uuid)
-
-                if db_document is None:
-                    activity.logger.exception(
-                        "The document %s couldn't be found in the database.", doc_uuid
-                    )
-                    raise DocumentNotFoundException(doc_uuid)
-
-                db_document.size_bytes = payload.size_bytes
-                db_document.bucket_name = payload.bucket_name
-
-                if payload.status == "UPLOADED":
-                    db_document.mark_uploaded()
-                elif payload.status == "PROCESSED":
-                    db_document.mark_processed()
-                elif payload.status == "FAILED":
-                    db_document.mark_failed()
-
-                await doc_repository.update(
-                    db_document, idempotency_key=idempotency_key
+        """Move the document to UPLOADED, PROCESSED or FAILED and store size and bucket."""
+        with _activity_errors(f"update document {payload.document_id}"):
+            transition = DOCUMENT_TRANSITIONS.get(payload.status)
+            if transition is None:
+                raise ValueError(
+                    f"'{payload.status}' is not a supported document status."
                 )
+            async with self._session_factory() as session:
+                repository = PostgresDocumentRepository(session)
+                document = await repository.get_one(
+                    UUID(payload.document_id), UUID(payload.tenant_id)
+                )
+                document.size_bytes = payload.size_bytes
+                document.bucket_name = payload.bucket_name
+                transition(document)
+                await repository.update(document)
                 await session.commit()
-            except DocumentNotFoundException as exc:
-                # Business rule violation makes it non-retryable
-                raise ApplicationError(
-                    str(exc), non_retryable=True, type="NotFound"
-                ) from exc
-            except Exception as exc:
-                activity.logger.exception(
-                    "Unexpected system failure updating document with id '%s'.",
-                    payload.document_id,
-                )
-                # Temporal's retry policies handles transient DB errors
-                raise ApplicationError(
-                    f"Failed to update document with id {payload.document_id}",
-                    non_retryable=False,
-                    type="DatabaseFailure",
-                ) from exc
 
     @activity.defn(name="create_ingestion_job_activity")
     async def create_ingestion_job_activity(
         self, payload: CreateIngestionJobPayload
     ) -> None:
-        activity.logger.info(
-            "Creating new ingestion job %s for document %s.",
-            payload.job_id,
-            payload.document_id,
-        )
-        info = activity.info()
-        idempotency_key = f"{info.workflow_run_id}-{info.activity_id}"
-
-        async with self._session_factory() as session:
-            job_repository = PostgresIngestionJobRepository(session)
-            try:
-                try:
-                    # Map primitives to Enums
-                    current_job_stage = IngestionStage[payload.current_stage.upper()]
-                    job_status = ProcessingStatus[payload.status.upper()]
-                except KeyError as exc:
-                    # Raises native KeyError. Data error hence mark as non-retryable.
-                    raise ApplicationError(
-                        f"Invalid payload value: {exc}. Expected a valid enum string.",
-                        non_retryable=True,
-                        type="DataValidationFailure",
-                    ) from exc
-
-                # Pass the idempotency_key to repository to prevent
-                # duplicate writes if this activity is retried after a crash.
-                now = datetime.now(UTC)
-                db_job = IngestionJobEntity(
-                    job_id=UUID(payload.job_id),
-                    document_id=UUID(payload.document_id),
-                    workflow_id=payload.workflow_id,
-                    workflow_run_id=payload.workflow_run_id,
-                    current_stage=current_job_stage,
-                    status=job_status,
-                    created_at=now,
-                    updated_at=now,
-                )
-                await job_repository.create(db_job, idempotency_key=idempotency_key)
+        """Store a new ingestion job. Safe to retry: an existing row is overwritten."""
+        with _activity_errors(f"create ingestion job {payload.job_id}"):
+            now = datetime.now(UTC)
+            job = IngestionJobEntity(
+                job_id=UUID(payload.job_id),
+                document_id=UUID(payload.document_id),
+                workflow_id=payload.workflow_id,
+                workflow_run_id=payload.workflow_run_id,
+                current_stage=parse_enum(IngestionStage, payload.current_stage),
+                status=parse_enum(ProcessingStatus, payload.status),
+                created_at=now,
+                updated_at=now,
+            )
+            async with self._session_factory() as session:
+                await PostgresIngestionJobRepository(session).create(job)
                 await session.commit()
-
-            except Exception as exc:
-                activity.logger.exception(
-                    "Unexpected system failure creating ingestion job for document with id '%s'.",
-                    payload.document_id,
-                )
-                raise ApplicationError(
-                    f"Failed to create ingestion job for document with id {payload.document_id}.",
-                    non_retryable=False,
-                    type="DatabaseFailure",
-                ) from exc
 
     @activity.defn(name="update_ingestion_job_activity")
     async def update_ingestion_job_activity(
         self, payload: UpdateIngestionJobPayload
     ) -> None:
-        activity.logger.info(
-            "Updating ingestion job %s status to %s.", payload.job_id, payload.status
-        )
-        info = activity.info()
-        idempotency_key = f"{info.workflow_run_id}-{info.activity_id}"
-
-        async with self._session_factory() as session:
-            job_repository = PostgresIngestionJobRepository(session)
-            try:
-                job_uuid = UUID(payload.job_id)
-                document_uuid = UUID(payload.document_id)
-                db_job = await job_repository.get_one(
-                    job_uuid,
-                    document_uuid,
+        """Move the job to a new status. FAILED stores the error message."""
+        with _activity_errors(f"update ingestion job {payload.job_id}"):
+            status = parse_enum(ProcessingStatus, payload.status)
+            async with self._session_factory() as session:
+                repository = PostgresIngestionJobRepository(session)
+                job = await repository.get_one(
+                    UUID(payload.job_id), UUID(payload.document_id)
                 )
-
-                if db_job is None:
-                    activity.logger.exception(
-                        "The ingestion job %s couldn't be found in the database.",
-                        job_uuid,
-                    )
-                    raise IngestionJobNotFoundException(job_uuid)
-
-                if payload.status == "COMPLETED":
-                    db_job.mark_completed()
-                elif payload.status == "FAILED":
-                    db_job.mark_failed(error=payload.error_message or "Unknown error")
+                if status is ProcessingStatus.COMPLETED:
+                    job.mark_completed()
+                elif status is ProcessingStatus.FAILED:
+                    job.mark_failed(error=payload.error_message or "Unknown error")
                 else:
-                    try:
-                        db_job.status = ProcessingStatus[payload.status.upper()]
-                        db_job.updated_at = datetime.now(UTC)
-                    except KeyError as exc:
-                        # Raises native KeyError. Data error hence mark as non-retryable.
-                        raise ApplicationError(
-                            f"Invalid payload value: {exc}. Expected a valid enum string.",
-                            non_retryable=True,
-                            type="DataValidationFailure",
-                        ) from exc
-
-                # Pass the idempotency_key to the repository to prevent
-                # duplicate writes if this activity is retried after a crash.
-                await job_repository.update(db_job, idempotency_key=idempotency_key)
+                    job.status = status
+                    job.updated_at = datetime.now(UTC)
+                await repository.update(job)
                 await session.commit()
-            except Exception as exc:
-                activity.logger.exception(
-                    "Unexpected system failure updating job with id '%s'.",
-                    payload.job_id,
-                )
-                raise ApplicationError(
-                    f"Failed to update ingestion job status to {payload.status} for job with id {payload.job_id}.",
-                    non_retryable=False,
-                    type="DatabaseFailure",
-                ) from exc
 
-    @activity.defn
+    @activity.defn(name="process_document_activity")
     async def process_document_activity(
         self, payload: ProcessDocumentPayload
     ) -> ProcessDocumentResult:
-        activity.logger.info(
-            "Processing document %s from bucket %s.",
-            payload.document_id,
-            payload.bucket,
-        )
+        """Download the document to a temporary directory for processing.
 
+        The local file name comes from the server-generated object key, never from the
+        client filename, so a name like '../../x' cannot escape the directory.
+        Missing objects, missing files and denied access are non-retryable.
+        """
+        activity.logger.info("Processing document %s.", payload.document_id)
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Download file to local temp file directly
-                local_file_path = os.path.join(temp_dir, payload.filename)
+                local_path = Path(temp_dir) / PurePosixPath(payload.object_key).name
                 await asyncio.to_thread(
                     self._storage.download_object,
                     payload.bucket,
                     payload.object_key,
-                    local_file_path,  # temporary local file path
+                    str(local_path),
                 )
-                total_chunks = 1000  # TODO: Update the process
+                # Parsing, chunking and indexing are not implemented yet.
                 return ProcessDocumentResult(
                     document_id=payload.document_id,
-                    chunks_processed=total_chunks,
+                    chunks_processed=0,
                     status=DocumentStatus.PROCESSED.value,
                 )
-        except CancelledError:  # Temporal handles the cancellation propagation
-            activity.logger.warning(
-                "The processing of document %s was cancelled.",
-                payload.document_id,
-            )
-            raise
         except Exception as exc:
-            is_non_retryable = isinstance(exc, FileNotFoundError) or exc in (
-                "NoSuchKey",
-                "AccessDenied",
-                "InvalidAccessKeyId",
-            )
+            permanent = isinstance(exc, PERMANENT_PROCESSING_ERRORS)
             activity.logger.exception(
-                "The processing of document %s failed. The retry status is set to: %s",
+                "Processing of document %s failed (permanent=%s).",
                 payload.document_id,
-                is_non_retryable,
+                permanent,
             )
             raise ApplicationError(
                 f"Failed to process document {payload.document_id}: {exc}",
-                non_retryable=is_non_retryable,
+                non_retryable=permanent,
                 type="ProcessingFailure",
             ) from exc

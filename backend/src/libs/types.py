@@ -1,11 +1,8 @@
-from src.libs.enums.document import DocumentType
+"""Shared Pydantic field types."""
 
-SUPPORTED_DOCUMENTS = {
-    "application/pdf": DocumentType.PDF,
-    "text/markdown": DocumentType.MARKDOWN,
-    "text/csv": DocumentType.CSV,
-    "image/png": DocumentType.IMAGE,
-    "image/jpeg": DocumentType.IMAGE,
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": DocumentType.DOCX,
-    "application/vnd.ms-powerpoint": DocumentType.PPTX,
-}
+from typing import Annotated
+
+from pydantic import StringConstraints
+
+# A string with at least one non-blank character. Surrounding whitespace is removed.
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

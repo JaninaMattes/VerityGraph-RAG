@@ -1,4 +1,4 @@
-# src/infrastructure/database/postgres/session.py
+"""Session factory and the per-request unit of work."""
 
 from collections.abc import AsyncGenerator
 
@@ -10,31 +10,22 @@ from src.libs.core.logger import get_logger
 logger = get_logger("api.infrastructure.postgres")
 
 
-# Create an async session factory
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False,  # Important for async
-        autocommit=False,
-        autoflush=False,
-    )
+    """Create the session factory. Loaded attributes stay readable after commit."""
+    return async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 
-# FastAPI Dependency
 async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession]:
+    """Yield one session per request: commit on success, roll back on any error.
+
+    Use it with Depends(..., scope="function") so that the commit runs before the
+    response is sent and a failed commit reaches the client as an error.
     """
-    Utilise generator as context manager.
-    Yields a database session and ensures proper cleanup.
-    """
-    factory = request.app.state.session_factory
-    async with factory() as session:
+    async with request.app.state.session_factory() as session:
         try:
-            yield session  # suspends execution and passes session to 'with' block
+            yield session
+            await session.commit()
         except Exception:
-            logger.warning("Request failed, rolling back database session.")
+            logger.warning("Request failed, rolling back the database session.")
             await session.rollback()
             raise
-        finally:
-            logger.info("Database session closed.")
-            await session.close()

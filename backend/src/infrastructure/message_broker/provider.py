@@ -1,10 +1,9 @@
-# src/infrastructure/message_broker/provider.py
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class EventHandler(Protocol):
-    """Defines an abstract base class for all event handlers.
-    This enforces that each handler implements its own handle method."""
+    """Handles one event record. Must be idempotent: a record can be delivered twice."""
 
-    async def handle(self, record: dict) -> None:
-        raise NotImplementedError("Subclasses must implement handle method")
+    async def handle(self, record: dict[str, Any]) -> None:
+        """Process the record. Raise to make the consumer retry the message."""
+        raise NotImplementedError

@@ -13,6 +13,7 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 router = APIRouter()
 
+
 @router.get("/info", status_code=status.HTTP_200_OK)
 async def info(settings: SettingsDep) -> AppHealthResponse:
     """This route returns a simple message indicating the status of the application.
