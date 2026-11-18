@@ -1,5 +1,7 @@
+"""Tests for the /tenants endpoints."""
+
+import uuid
 from unittest.mock import AsyncMock
-from uuid import UUID
 
 import pytest
 from fastapi import status
@@ -11,248 +13,212 @@ from src.libs.exceptions.exceptions import (
     DatabaseInternalException,
     TenantNotFoundException,
 )
-from src.libs.schemas.tenant import TenantResponse
 
 pytestmark = pytest.mark.asyncio
 
-# ==========================================================
-# Endpoint: /tenants
-# ==========================================================
+NOT_FOUND = {
+    "error": "not_found",
+    "message": "The requested resource couldn't be found.",
+}
 
 
-class TestTenantAPIEndpoints:
-    """
-    Test suite for the Tenants API endpoints.
-    Ensures the application correctly generates presigned Upload/Download URLs.
-    """
+class TestCreateTenant:
+    """POST /tenants creates a tenant."""
 
-    # ---------------------------------------------------------
-    # POST /tenants (Create new Tenant entry)
-    # ---------------------------------------------------------
-
-    async def test_create_new_tenant_entry_returns_status_and_201(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_organisation: str,
+    async def test_returns_201_and_tenant(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, tenant_entity
     ):
         """
-        GIVEN the application is running in the testing environment and the TenantService is correct
-        WHEN a HTTP POST request is made against '/api/v1/tenants' with the request parameters
-        THEN a HTTP status code of 201 as well as the organisation name and status are returned
+        GIVEN a valid organisation name
+        WHEN POST /api/v1/tenants is called
+        THEN the response is 201 with the organisation and status
         """
-        # 1. Arrange
-        mock_service_response = TenantResponse(
-            organisation=mock_tenant_organisation, status=TenantStatus.CREATED
+        mock_tenant_service.create.return_value = tenant_entity
+
+        response = await tenant_client.post(
+            "/api/v1/tenants", json={"organisation": tenant_entity.organisation}
         )
-        mock_tenant_service.create.return_value = mock_service_response
 
-        payload = {"organisation": "Test Organisation"}
-
-        # 2. Act
-        response = await tenant_client.post("/api/v1/tenants", json=payload)
-
-        # 3. Assert
         assert response.status_code == status.HTTP_201_CREATED
-        response_json = response.json()
-        assert response_json["organisation"] == mock_tenant_organisation
-        assert response_json == mock_service_response.model_dump(mode="json")
-
-        # assert business logic and verify the service was called once
-        mock_tenant_service.create.assert_awaited_once_with(
-            Tenant(organisation=mock_tenant_organisation)
-        )
-
-    async def test_create_new_tenant_and_handle_empty_paramater_returns_400_when_bad_request(
-        self, tenant_client: AsyncClient
-    ):
-        """
-        GIVEN the application is running in the testing environment and TenantService is correctly injected
-        WHEN a HTTP POST request is made against '/api/v1/tenants' with the request parameters of 'organisation' being an empty string
-        THEN a HTTP status code of 400 with the message that the parameter is missing is returned
-        """
-        # 1. Arrange
-        payload = {"organisation": ""}
-
-        # 2. Act
-        response = await tenant_client.post("/api/v1/tenants", json=payload)
-
-        # 3. Assert
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json() == {
-            "detail": "Missing required parameter 'organisation' name"
-        }
-
-    # ---------------------------------------------------------
-    # GET /tenants/{tenant_id} (Download URL)
-    # ---------------------------------------------------------
-    async def test_get_tenant_by_id_returns_tenant_created_and_200_when_ok(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_organisation: str,
-        mock_tenant_id: UUID,
-    ):
-        """
-        GIVEN the application is running in the testing environment and TenantService is correctly injected
-        WHEN a HTTP GET request is made against '/api/v1/tenants' with a correct tenant id as path parameter
-        THEN a HTTP status code of 200 and the retrieved tenant are returned
-        """
-        # 1. Arrange
-        mock_service_response = TenantResponse(
-            organisation=mock_tenant_organisation, status=TenantStatus.CREATED
-        )
-        mock_tenant_service.get.return_value = mock_service_response
-
-        # 2. Act
-        response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
-
-        # 3. Assert
-        assert response.status_code == status.HTTP_200_OK
-        response_json = response.json()
-        assert response_json["organisation"] == mock_tenant_organisation
-        assert response_json["status"] == TenantStatus.CREATED.value
-
-        # assert business logic
-        mock_tenant_service.get.assert_awaited_once_with(mock_tenant_id)
-
-    async def test_get_tenant_by_id_returns_404_when_not_found(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_id: UUID,
-    ):
-        """
-        GIVEN the application is running in the testing environment and the TenantService is correctly injected
-        WHEN a HTTP GET request is made against '/api/v1/tenants' with a mocked tenant id that doesn't map to a database entry
-        THEN a HTTP status code of 404 resource not found and the correct error message is returned
-        """
-        # 1. Arrange
-        error_message = "The requested resource couldn't be found."
-        mock_tenant_service.get.side_effect = TenantNotFoundException(mock_tenant_id)
-
-        # 2. Act
-        response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
-
-        # 3. Assert
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-        response_json = response.json()
-        assert response_json["error"] == "not_found"
-        assert response_json["message"] == error_message
-
-    async def test_get_tenant_by_id_returns_500_when_failure(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_id: UUID,
-    ):
-        """
-        GIVEN the application is running in the testing environment and the TenantService is correctly injected
-        WHEN a HTTP GET request is made against '/api/v1/tenants' with a mocked database exception
-        THEN a HTTP status code of 500 internal error and the correct error message is returned
-        """
-
-        # 1. Arrange
-        error_message = (
-            f"Failed to read tenant information for '{mock_tenant_id}' in the database."
-        )
-        mock_tenant_service.get.side_effect = DatabaseInternalException(error_message)
-
-        # 2. Act
-        response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
-
-        # 3. Assert
-        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-        response_json = response.json()
-        assert response_json["error"] == "database_error"
-        assert response_json["message"] == "Database operation failed."
-
-    # async def test_get_tenant_by_id_returns_422_when_unprocessable(
-    #     self,
-    #     tenant_client: AsyncClient,
-    # ):
-    #     """
-    #     GIVEN the application is running in the testing environment and TenantService is correctly injected
-    #     WHEN a HTTP GET request is made against '/api/v1/tenants' with an incorrect tenant id as path parameter
-    #     THEN a HTTP status code of 400 with the message bad request is returned
-    #     """
-    #     # 1. Arrange
-    #     mock_tenant_id = "test-not-a-valid-uuid"
-
-    #     # 2. Act
-    #     response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
-
-    #     # 3. Assert
-    #     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-
-    # ---------------------------------------------------------
-    # PATCH /tenants/{tenant_id} (Download URL)
-    # ---------------------------------------------------------
-    async def test_update_tenant_by_id_returns_200_when_ok(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_organisation: str,
-        mock_tenant_id: UUID,
-    ):
-        """
-        GIVEN the application is running in the testing environment and the TenantService is correctly injected
-        WHEN a HTTP PATCH request is made against '/api/v1/tenants' with the mocked tenant organisation
-        THEN a HTTP status code of 200 and the updated tenant with status are returned
-        """
-
-        # 1. Arrange
-        payload = {
-            "organisation": mock_tenant_organisation,
-        }
-        mock_service_response = TenantResponse(
-            organisation=mock_tenant_organisation, status=TenantStatus.CREATED
-        )
-        mock_tenant_service.update.return_value = mock_service_response
-
-        # 2. Act
-        response = await tenant_client.patch(
-            f"/api/v1/tenants/{mock_tenant_id}", json=payload
-        )
-
-        # 3. Assert
-        assert response.status_code == status.HTTP_200_OK
-        assert response.json() == {
-            "organisation": mock_tenant_organisation,
+            "organisation": tenant_entity.organisation,
             "status": TenantStatus.CREATED.value,
         }
-        # assert business logic
-        mock_tenant_service.update.assert_awaited_once_with(
-            UpdateTenant(
-                tenant_id=mock_tenant_id, organisation=mock_tenant_organisation
-            )
+        mock_tenant_service.create.assert_awaited_once_with(
+            Tenant(organisation=tenant_entity.organisation)
         )
 
-    async def test_update_tenant_by_id_with_organisation_returns_400_when_bad_request(
-        self,
-        tenant_client: AsyncClient,
-        mock_tenant_service: AsyncMock,
-        mock_tenant_organisation: str,
-        mock_tenant_id: UUID,
+    @pytest.mark.parametrize("organisation", ["", "   "], ids=["empty", "blank"])
+    async def test_blank_organisation_returns_422(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, organisation
     ):
         """
-        GIVEN the application is running in the testing environment and the TenantService is correctly injected
-        WHEN a HTTP PATCH request is made against '/api/v1/tenants' with the mocked tenant organisation containing an empty string
-        THEN a HTTP status code of 400 bad request with the correct error message is returned
+        GIVEN an empty or blank organisation name
+        WHEN POST /api/v1/tenants is called
+        THEN the response is 422 AND the service is not called
         """
-
-        # 1. Arrange
-        payload = {
-            "organisation": "",
-        }
-
-        # 2. Act
-        response = await tenant_client.patch(
-            f"/api/v1/tenants/{mock_tenant_id}", json=payload
+        response = await tenant_client.post(
+            "/api/v1/tenants", json={"organisation": organisation}
         )
 
-        # 3. Assert
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        mock_tenant_service.create.assert_not_awaited()
+
+
+class TestReadTenant:
+    """GET /tenants/{tenant_id} returns the caller's own tenant only."""
+
+    async def test_own_tenant_returns_200(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, tenant_entity
+    ):
+        """
+        GIVEN the path id is the caller's tenant
+        WHEN GET /api/v1/tenants/{id} is called
+        THEN the response is 200 with the tenant
+        """
+        mock_tenant_service.get.return_value = tenant_entity
+
+        response = await tenant_client.get(f"/api/v1/tenants/{tenant_entity.tenant_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["organisation"] == tenant_entity.organisation
+        mock_tenant_service.get.assert_awaited_once_with(tenant_entity.tenant_id)
+
+    async def test_other_tenant_returns_404(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock
+    ):
+        """
+        GIVEN the path id is a different tenant than the caller's
+        WHEN GET /api/v1/tenants/{id} is called
+        THEN the response is 404 (existence is not revealed) AND the service is not called
+        """
+        response = await tenant_client.get(f"/api/v1/tenants/{uuid.uuid4()}")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json() == NOT_FOUND
+        mock_tenant_service.get.assert_not_awaited()
+
+    async def test_missing_tenant_returns_404(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, mock_tenant_id
+    ):
+        """
+        GIVEN the caller's tenant does not exist in the database
+        WHEN GET /api/v1/tenants/{id} is called
+        THEN the response is 404 with the standard error body
+        """
+        mock_tenant_service.get.side_effect = TenantNotFoundException(mock_tenant_id)
+
+        response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.json() == NOT_FOUND
+
+    async def test_database_failure_returns_500(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, mock_tenant_id
+    ):
+        """
+        GIVEN the database fails
+        WHEN GET /api/v1/tenants/{id} is called
+        THEN the response is 500 with the database error body
+        """
+        mock_tenant_service.get.side_effect = DatabaseInternalException("db down")
+
+        response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert response.json() == {
-            "detail": "Missing required parameter 'organisation' name"
+            "error": "database_error",
+            "message": "Database operation failed.",
         }
+
+    async def test_invalid_id_returns_422(self, tenant_client: AsyncClient):
+        """
+        GIVEN a path id that is not a UUID
+        WHEN GET /api/v1/tenants/{id} is called
+        THEN the response is 422
+        """
+        response = await tenant_client.get("/api/v1/tenants/not-a-uuid")
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TestUpdateTenant:
+    """PATCH /tenants/{tenant_id} renames the caller's own tenant."""
+
+    async def test_own_tenant_returns_200(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, tenant_entity
+    ):
+        """
+        GIVEN the path id is the caller's tenant and a new organisation name
+        WHEN PATCH /api/v1/tenants/{id} is called
+        THEN the response is 200 AND the service receives the update
+        """
+        mock_tenant_service.update.return_value = tenant_entity
+
+        response = await tenant_client.patch(
+            f"/api/v1/tenants/{tenant_entity.tenant_id}", json={"organisation": "New"}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_tenant_service.update.assert_awaited_once_with(
+            UpdateTenant(tenant_id=tenant_entity.tenant_id, organisation="New")
+        )
+
+    async def test_other_tenant_returns_404(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock
+    ):
+        """
+        GIVEN the path id is a different tenant than the caller's
+        WHEN PATCH /api/v1/tenants/{id} is called
+        THEN the response is 404 AND the service is not called
+        """
+        response = await tenant_client.patch(
+            f"/api/v1/tenants/{uuid.uuid4()}", json={"organisation": "New"}
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        mock_tenant_service.update.assert_not_awaited()
+
+    async def test_blank_organisation_returns_422(
+        self, tenant_client: AsyncClient, mock_tenant_id
+    ):
+        """
+        GIVEN an empty organisation name
+        WHEN PATCH /api/v1/tenants/{id} is called
+        THEN the response is 422
+        """
+        response = await tenant_client.patch(
+            f"/api/v1/tenants/{mock_tenant_id}", json={"organisation": ""}
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TestRevokeTenant:
+    """DELETE /tenants/{tenant_id} removes the caller's own tenant."""
+
+    async def test_own_tenant_returns_204(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock, mock_tenant_id
+    ):
+        """
+        GIVEN the path id is the caller's tenant
+        WHEN DELETE /api/v1/tenants/{id} is called
+        THEN the response is 204 AND the service deletes that tenant
+        """
+        response = await tenant_client.delete(f"/api/v1/tenants/{mock_tenant_id}")
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        mock_tenant_service.delete.assert_awaited_once_with(mock_tenant_id)
+
+    async def test_other_tenant_returns_404(
+        self, tenant_client: AsyncClient, mock_tenant_service: AsyncMock
+    ):
+        """
+        GIVEN the path id is a different tenant than the caller's
+        WHEN DELETE /api/v1/tenants/{id} is called
+        THEN the response is 404 AND nothing is deleted
+        """
+        response = await tenant_client.delete(f"/api/v1/tenants/{uuid.uuid4()}")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        mock_tenant_service.delete.assert_not_awaited()

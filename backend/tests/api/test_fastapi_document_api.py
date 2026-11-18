@@ -1,113 +1,83 @@
+"""Tests for the /documents endpoints."""
+
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import status
 from httpx import AsyncClient
 
+from src.domain.documents.dataclasses import PresignedUrl
 from src.libs.exceptions.exceptions import DocumentNotFoundException
-from src.libs.schemas.document import PresignedURLResponse
 
 pytestmark = pytest.mark.asyncio
 
-# ==========================================================
-# Endpoint 1: /documents
-# ==========================================================
 
+class TestCreateUploadUrl:
+    """POST /documents returns a presigned upload URL."""
 
-class TestDocumentAPIEndpoints:
-    """
-    Test suite for the Documents API endpoints.
-    Ensures the application correctly generates presigned Upload/Download URLs.
-    """
-
-    # ---------------------------------------------------------
-    # POST /documents (Create Upload URL)
-    # ---------------------------------------------------------
-
-    async def test_create_upload_url_returns_201_and_presigned_url_when_ok(
+    async def test_returns_201_and_presigned_url(
         self,
-        doc_client,
-        mock_document_service,
+        doc_client: AsyncClient,
+        mock_document_service: AsyncMock,
         mock_tenant_id,
         mock_document_id,
         mock_document_name,
     ):
         """
-        GIVEN the application is running in the testing environment and filename, namespace and mime_type are known
-        WHEN a HTTP POST request is made against '/api/v1/documents'
-        THEN a HTTP status code of 201 as well as the pre-signed uploade URL are returned
+        GIVEN a valid filename and namespace
+        WHEN POST /api/v1/documents is called
+        THEN the response is 201 with the presigned URL from the service
         """
-        # 1. Arrange
-        mock_service_response = PresignedURLResponse(
+        mock_document_service.create_upload_url.return_value = PresignedUrl(
             document_id=mock_document_id,
             url="https://minio.local/bucket/contract.pdf?signature=abc",
             expires_at=timedelta(minutes=15),
-            required_headers={
-                "x-amz-meta-tenant-id": str(mock_tenant_id),
-                "x-amz-meta-filename": mock_document_name,
-                "x-amz-meta-document-type": "PDF",
-            },
+            required_headers={"x-amz-meta-filename": mock_document_name},
         )
-        mock_document_service.create_upload_url.return_value = mock_service_response
 
-        payload = {"filename": "contract.pdf", "namespace": "files"}
+        response = await doc_client.post(
+            "/api/v1/documents",
+            json={"filename": mock_document_name, "namespace": "files"},
+        )
 
-        # 2. Act
-        response = await doc_client.post("/api/v1/documents", json=payload)
-
-        # 3. Assert
-        # Assert HTTP Response
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.json() == mock_service_response.model_dump(mode="json")
-
-        # Assert Service Interaction
+        body = response.json()
+        assert body["document_id"] == str(mock_document_id)
+        assert body["url"].endswith("signature=abc")
+        assert body["required_headers"] == {"x-amz-meta-filename": mock_document_name}
         mock_document_service.create_upload_url.assert_awaited_once_with(
-            tenant_id=mock_tenant_id, filename="contract.pdf", namespace="files"
+            tenant_id=mock_tenant_id, filename=mock_document_name, namespace="files"
         )
 
-    async def test_create_new_document_and_handle_empty_parameter_returns_400_when_bad_request(
-        self, doc_client: AsyncClient
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"filename": "", "namespace": "legal"},
+            {"filename": "   ", "namespace": "legal"},
+            {"filename": "a.pdf", "namespace": ""},
+            {"namespace": "legal"},
+        ],
+        ids=["empty-filename", "blank-filename", "empty-namespace", "missing-filename"],
+    )
+    async def test_invalid_body_returns_422(
+        self, doc_client: AsyncClient, mock_document_service: AsyncMock, payload
     ):
         """
-        GIVEN the application is running in the testing environment
-        WHEN a HTTP POST request is made against '/api/v1/documents' with the request parameter 'filename' is empty
-        THEN a HTTP status code of 400 bad request with the message that the parameter is missing is returned
+        GIVEN a body with a missing, empty or blank required field
+        WHEN POST /api/v1/documents is called
+        THEN the response is 422 AND the service is not called
         """
-
-        # 1. Arrange
-        payload = {"filename": "", "namespace": "legal"}
-
-        # 2. Act
         response = await doc_client.post("/api/v1/documents", json=payload)
 
-        # 3. Assert
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json() == {"detail": "Missing required parameter 'filename'"}
-
-    async def test_create_upload_url_and_handle_missing_doc_returns_422_when_unprocessable(
-        self, doc_client: AsyncClient
-    ):
-        """
-        GIVEN the application is running in the testing environment and filename, namespace and mime_type are known
-        WHEN a POST request is made against '/api/v1/documents' with a namespace parameter that does not exist
-        THEN a HTTP status code of 422 is returned
-        """
-        # 1. Arrange
-        payload = {"namespace": "legal"}
-
-        # 2. Act
-        response = await doc_client.post("/api/v1/documents", json=payload)
-
-        # 3. Assert
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-        error_details = response.json()["detail"]
-        assert any(err["loc"] == ["body", "filename"] for err in error_details)
+        mock_document_service.create_upload_url.assert_not_awaited()
 
-    # ---------------------------------------------------------
-    # GET /documents/{document_id} (Download URL)
-    # ---------------------------------------------------------
 
-    async def test_get_download_url_returns_presigned_url_and_200(
+class TestGetDownloadUrl:
+    """GET /documents/{document_id} returns a presigned download URL."""
+
+    async def test_returns_200_and_presigned_url(
         self,
         doc_client: AsyncClient,
         mock_document_service,
@@ -115,44 +85,47 @@ class TestDocumentAPIEndpoints:
         mock_tenant_id,
     ):
         """
-        GIVEN the application is running in the testing environment and the correct document id are known
-        WHEN a GET request is made against '/api/v1/documents' with a document id as parameter
-        THEN a HTTP status code of 200 as well as the pre-signed download URL are returned
+        GIVEN an existing document of the current tenant
+        WHEN GET /api/v1/documents/{id} is called
+        THEN the response is 200 with the presigned URL
         """
-        # 1. Arrange
-        mock_response = PresignedURLResponse(
+        mock_document_service.get_download_url.return_value = PresignedUrl(
             document_id=mock_document_id,
             url="https://minio.local/bucket/download?signature=xyz",
-            expires_at=timedelta(minutes=15),
+            expires_at=timedelta(minutes=5),
             required_headers={},
         )
-        mock_document_service.get_download_url.return_value = mock_response
 
-        # 2. Act
         response = await doc_client.get(f"/api/v1/documents/{mock_document_id}")
 
-        # 3. Assert
         assert response.status_code == status.HTTP_200_OK
-        assert response.json() == mock_response.model_dump(mode="json")
+        assert response.json()["url"].endswith("signature=xyz")
         mock_document_service.get_download_url.assert_awaited_once_with(
             mock_document_id, mock_tenant_id
         )
 
-    async def test_get_download_url_and_handle_not_found_returns_404(
+    async def test_unknown_document_returns_404(
         self, doc_client: AsyncClient, mock_document_service, mock_document_id
     ):
         """
-        GIVEN The test domain for a specific document id is not found.
-        WHEN a GET request is made against '/api/v1/documents' with a document id as parameter
-        THEN The service raises a Domain Exception (DocumentNotFoundException), which the FastAPI global exception handler correctly translates it to an HTTP 404.
+        GIVEN the service reports that the document does not exist
+        WHEN GET /api/v1/documents/{id} is called
+        THEN the response is 404
         """
-        # 1. Arrange: Simulate the service failing
         mock_document_service.get_download_url.side_effect = DocumentNotFoundException(
             mock_document_id
         )
 
-        # 2. Act
         response = await doc_client.get(f"/api/v1/documents/{mock_document_id}")
 
-        # 3. Assert: Ensure the API returns 404
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    async def test_invalid_id_returns_422(self, doc_client: AsyncClient):
+        """
+        GIVEN a path id that is not a UUID
+        WHEN GET /api/v1/documents/{id} is called
+        THEN the response is 422
+        """
+        response = await doc_client.get("/api/v1/documents/not-a-uuid")
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
