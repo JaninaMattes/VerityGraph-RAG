@@ -1,309 +1,247 @@
-<!--
-*** Thanks for checking out this README Template. If you have a suggestion that would
-*** make this better, please fork the repo and create a pull request or simply open
-*** an issue with the tag "enhancement".
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-
-
-
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
-
-
-<!-- PROJECT LOGO -->
-<br />
 <p align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="docs/images/logo.png" alt="Logo" width="200" height="120">
-  </a>
-
-  <h2 align="center">VerityGraph: MCP-Powered Agentic GraphRAG Pipeline</h2>
-
-  <p align="center">
-    An event-driven, enterprise-grade data pipeline for complex relational reasoning and traceable AI insights.
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/othneildrew/Best-README-Template">View Demo</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/othneildrew/Best-README-Template/issues">Request Feature</a>
-  </p>
+  <img src="docs/images/logo.png" alt="VerityGraph logo" width="200" height="120">
 </p>
 
+<h2 align="center">VerityGraph: an agentic GraphRAG pipeline with traceable answers</h2>
 
+<p align="center">
+  An event-driven pipeline that ingests documents and will answer multi-hop questions
+  with citations back to the source.
+</p>
 
-<!-- TABLE OF CONTENTS -->
-## Table of Contents
+> **Status: learning project, early stage.** The document ingestion path works end to end.
+> Parsing, the knowledge graph, vector search and the agent are planned. See the
+> [roadmap](#roadmap).
 
-- [Table of Contents](#table-of-contents)
-- [About The Project](#about-the-project)
-- [Key Capabilities \& Demo Use Case](#key-capabilities--demo-use-case)
-- [System Design](#system-design)
-  - [Built With](#built-with)
-- [Getting Started](#getting-started)
-  - [Project Backend Structure](#project-backend-structure)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
+## Contents
+
+- [Why VerityGraph](#why-veritygraph)
+- [What works today](#what-works-today)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
 - [Usage](#usage)
-  - [Temporal Web UI](#temporal-web-ui)
-    - [Example: Manually upload/download file](#example-manually-uploaddownload-file)
+- [Development](#development)
+- [Project structure](#project-structure)
 - [Roadmap](#roadmap)
-- [Contributing](#contributing)
 - [License](#license)
-- [Contact](#contact)
 - [Acknowledgements](#acknowledgements)
-    - [Additional Resources](#additional-resources)
 
+## Why VerityGraph
 
+Plain RAG systems often fail at questions that connect several facts, for example: *"How
+are the five largest US tech companies investing in each other?"* They retrieve text chunks,
+but they do not know how entities relate, and they cannot always show where an answer
+comes from.
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+VerityGraph combines two kinds of retrieval:
 
-Vanilla RAG systems commonly fail at complex, multi-hop relational queries (e.g., "How are the Big 5 US tech companies investing in each other?") and suffer from hallucinations because they lack structured context and source traceability.
+- **Semantic search** in a vector database (Qdrant).
+- **Relational reasoning** in a knowledge graph (Neo4j).
 
-VerityGraph on the other hand is an end-to-end Agentic GraphRAG system that combines the semantic search of Vector Databases (Qdrant) with the relational reasoning of Knowledge Graphs (Neo4j). Powered by the Model Context Protocol (MCP) and orchestrated via Temporal.io, it ingests raw financial documents asynchronously and exposes them through a stateful LLM agent.
+The goal: a user uploads, for example, several years of SEC 10-K filings and asks a
+question. The agent splits the question into steps, queries the graph and the vectors, and
+answers with a visual graph. Every node and number links to its source document, page and
+text snippet.
 
-## Key Capabilities & Demo Use Case
-A user can gain deeper insights into structural information and relations of unstructured files using VerityGraph. For instance, a user might want to upload 500 pages of SEC 10-K filings and investment reports for a specific range of years, before asking the system:
+## What works today
 
-_"Show me graphically how much and how the investment of company 'X' relates to the largest five tech companies in the USA over a timespan of 5 years starting at 2021."_
+| Area | Status |
+| --- | --- |
+| Tenants and users (CRUD API) | Works. The tenant comes from `DEV_TENANT_ID` until authentication exists |
+| Presigned upload and download URLs (MinIO) | Works |
+| Upload event → Kafka → Temporal ingestion workflow | Works. It records the document and an ingestion job |
+| Parsing, chunking, embeddings | Planned. The processing step only downloads the file |
+| Knowledge graph (Neo4j), vector search (Qdrant) | Planned |
+| Agent (LangGraph), MCP tools, evaluation, tracing | Planned |
+| Frontend | Vite and React scaffold only |
 
-Instead of simply returning static chunks of text or a summary of text, VerityGraph performs the following:
+## Architecture
 
-1. Reasons & Queries: The Agentic workflow decomposes the prompt, queries the Neo4j Knowledge Graph for relational investment data, and retrieves specific chunks from Qdrant.
-2. Visualizes: It dynamically generates a React-based interactive dashboard rendering a node-edge graph of the investment flows and capital amounts.
-3. Proves (Traceability): Every node and metric in the dashboard is clickable, revealing the exact source document, page number, and text snippet; just like citations that we would expect in a peer-reviewed research paper.
-4. Exports: Users can export the generated visual dashboard and the citation bibliography as a PDF/Excel report.
+![System design](./docs/images/system-design.png)
 
-## System Design
-![System Design Schema Screen Shot](./docs/images/system-design.png)
+### Ingestion flow
 
-A scalable GraphRAG pipeline, built around agents, with six core layers:
-
-1. Data Ingestion Layer: Converts raw input data (e.g., PDFs, CSVs) into structured knowledge via document loading, chunking, and indexing; scalable with S3, RDBMS, and Ray.
-2. Hybrid Retrieval: Combines Neo4j (Cypher) for topology/graph traversal and Qdrant (HNSW) for semantic vector search.
-3. MCP Integration: Standardizes how the LLM agent safely calls external tools (Web Search, Python code execution for charting, Database queries).
-4. Observability: Full OpenTelemetry tracing across the API, Temporal workflows, and LLM calls.
-
-A list of commonly used resources are listed in the acknowledgements.
-A list of commonly used resources are listed in the acknowledgements.
-
-### Built With
-This section lists any major frameworks that were used to built this project.
-* [FastAPI](https://fastapi.tiangolo.com/)
-* [Docling.ai](https://docling.ai/)
-* [Temporal.io](https://temporal.io/)
-* [LangGraph](https://info.langchain.com/)
-* [LangSmith](https://info.langchain.com/)
-* [MinIO](https://fastapi.tiangolo.com/)
-* [Qdrant](https://qdrant.tech/)
-* [Neo4j](https://neo4j.com/)
-* [PostgreSQL](https://www.postgresql.org//)
-* [Qwen](https://qwen.ai/home)
-* [React](https://react.dev/)
-* [D3.js & React (Graph Gallery)](https://www.react-graph-gallery.com/)
-
-
-<!-- GETTING STARTED -->
-## Getting Started
-
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
-
-### Project Backend Structure
-
-Vanilla agentic RAG pipelines are defined over a codebase that currently typically contains a single vector database, some AI models, and a simple ingestion pipeline. However, for this project the structure is broken up into smaller manageable components to avoid the complexity and coupling that is often found in a monolithic codebase. The following is a list of the components that are broken out into their own folders:
-
+```text
+Client ──POST /api/v1/documents──▶ FastAPI ──▶ presigned PUT URL + required headers
+Client ──PUT file (with headers)─▶ MinIO
+MinIO  ──s3:ObjectCreated event──▶ Kafka topic "minio-events"
+Worker ──consumes event──────────▶ starts Temporal workflow "ingestion-job-<document_id>"
+Workflow:
+  1. create the document record   (status UPLOADED)
+  2. create the ingestion job     (status PENDING)
+  3. process the document         (today: download only)
+  4. mark the document PROCESSED and the job COMPLETED
+     – or both FAILED, if step 3 fails
 ```
-src/
-├── api/                    # ONLINE SERVING LAYER (FastAPI HTTP/WebSocket)
-│   ├── routers/            # HTTP endpoints (LLM chat, presigned URL generation, health)
-│   ├── middleware.py       # Auth, CORS, Logging
-│   └── dependencies.py     # FastAPI dependency injection
-│
-├── agents/                 # AGENTIC ORCHESTRATION (LangGraph)
-├── domain/                 # CORE BUSINESS LOGIC (Domain Driven Design)
-├── infrastructure/         # DATA STORAGE (MinIO/S3), EXTERNAL SYSTEMS & ADAPTERS
-│   ├── database/
-│   │   ├── postgres/       # SQLAlchemy setup, Repositories impl
-│   │   ├── neo4j/          # Neo4j driver, session, Cypher queries
-│   │   └── qdrant/         # Qdrant client, vector search
-│   ├── message_broker/     # Kafka/Redpanda producers & consumers
-│   ├── storage/            # MinIO/S3 client
-│   └── models/             # AI models (LLM, Embedding, Reranker clients)
-│
-├── pipelines/              # OFFLINE DATA PROCESSING
-│   └── ingestion/
-│       ├── config.py       # Chunk sizes, batch sizes
-│       ├── loaders/        # PDF, DOCX, HTML parsers
-│       ├── chunking/       # Semantic splitters, metadata enrichment
-│       ├── embedding/      # Batch embedders (calls infrastructure/ai)
-│       ├── graph/          # Entity extraction & Ontology schema
-│       └── indexing/       # Writers for Postgres, Qdrant, Neo4j
-│
-├── mcp/                    # MODEL CONTEXT PROTOCOL (Agent Interface)
-├── evaluation/             # QUALITY & BENCHMARKS
-├── observability/          # MONITORING
-└── shared/                 # SHARED UTILITIES
-    ├── core/               # Pydantic Settings (config.py)
-    ├── schemas/            # Pydantic models for API requests/responses
-    ├── enums/              # Enums (DocumentStatus, etc.)
-    └── exceptions/         # Custom exceptions
-```
+
+Design decisions:
+
+- **File bytes never pass through the API.** The client uploads directly to object
+  storage. The API stays small and cheap to scale.
+- **Temporal owns the long-running work.** Each step is an activity with its own retry
+  policy. Data errors are not retried; database and network faults are.
+- **At-least-once delivery.** The Kafka consumer commits an offset only after the workflow
+  has started. The deterministic workflow ID makes duplicate events harmless.
+- **Ports and adapters.** The domain defines `Protocol`s for storage and repositories, and
+  the infrastructure layer implements them. Tests replace them with mocks.
+
+### Built with
+
+In use: [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://www.sqlalchemy.org/)
+and [Alembic](https://alembic.sqlalchemy.org/) on [PostgreSQL](https://www.postgresql.org/),
+[MinIO](https://min.io/), [Apache Kafka](https://kafka.apache.org/) (KRaft) with
+[aiokafka](https://aiokafka.readthedocs.io/), [Temporal](https://temporal.io/),
+[uv](https://docs.astral.sh/uv/), [Ruff](https://docs.astral.sh/ruff/) and
+[pytest](https://pytest.org/).
+
+Planned: [Docling](https://docling.ai/), [Qdrant](https://qdrant.tech/),
+[Neo4j](https://neo4j.com/), [LangGraph](https://www.langchain.com/langgraph),
+[Qwen](https://qwen.ai/home), [React](https://react.dev/) with
+[D3.js](https://www.react-graph-gallery.com/).
+
+## Getting started
 
 ### Prerequisites
 
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-```sh
-npm install npm@latest -g
-```
+- Docker with Docker Compose v2
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (it installs Python 3.14)
+- `make`
 
 ### Installation
 
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-```sh
-git clone https://github.com/your_username_/Project-Name.git
-```
-3. Install NPM packages
-```sh
-npm install
-```
-4. Enter your API in `config.js`
-```JS
-const API_KEY = 'ENTER YOUR API';
-```
+1. Clone the repository and go to its root directory.
+2. Create the two local environment files from the examples:
 
+   ```sh
+   cp docker/.env.example docker/.env
+   cp backend/.env.example backend/.env
+   ```
 
+3. Replace every `<YOUR-PASSWORD>` and `<YOUR-CLUSTER-ID>` value.
+   - Make the MinIO and Postgres credentials in `backend/.env` the same as in `docker/.env`.
+   - Generate a Kafka cluster ID with
+     `docker run --rm confluentinc/cp-kafka:8.3.1 kafka-storage random-uuid`.
+4. Install the backend dependencies:
 
-<!-- USAGE EXAMPLES -->
+   ```sh
+   make install
+   ```
+
+5. Start the stack:
+
+   ```sh
+   make up
+   ```
+
+### Services
+
+| Service | URL or port |
+| --- | --- |
+| API (OpenAPI docs) | <http://localhost:8000/docs> |
+| Temporal Web UI | <http://localhost:8081> |
+| Kafka UI | <http://localhost:8080> |
+| MinIO console / S3 API | <http://localhost:9001> / `localhost:9000` |
+| pgAdmin | <http://localhost:5433> |
+| PostgreSQL (app / Temporal) | `localhost:5432` / `localhost:5435` |
+| Kafka (from containers / from the host) | `kafka-kraft:9092` / `localhost:9094` |
+
 ## Usage
 
-Start the service via:
-```bash
-docker compose up --build -d
+Do these steps to upload a document and start the ingestion:
+
+1. Request an upload URL:
+
+   ```sh
+   curl -s -X POST http://localhost:8000/api/v1/documents \
+     -H "Content-Type: application/json" \
+     -d '{"filename": "report.pdf", "namespace": "filings"}'
+   ```
+
+   The response contains `document_id`, `url` and `required_headers`.
+
+2. Upload the file with every header from `required_headers`:
+
+   ```sh
+   curl -X PUT --upload-file report.pdf \
+     -H "x-amz-meta-tenant-id: <value>" \
+     -H "x-amz-meta-filename: report.pdf" \
+     -H "x-amz-meta-document-type: PDF" \
+     "<url>"
+   ```
+
+3. Open the Temporal Web UI. Find the workflow `ingestion-job-<document_id>`.
+
+   <img src="docs/images/temporal-web-ui.png" alt="Temporal Web UI" width="100%">
+
+4. Request a download URL:
+
+   ```sh
+   curl -s http://localhost:8000/api/v1/documents/<document_id>
+   ```
+
+Other endpoints: `POST/GET/PATCH/DELETE /api/v1/tenants/{tenant_id}`,
+`/api/v1/users/{user_id}` and `GET /api/v1/info`. The OpenAPI docs list all of them.
+
+## Development
+
+| Task | Command |
+| --- | --- |
+| Run the API locally with reload | `make dev` |
+| Run the ingestion worker locally | `make worker` |
+| Lint and format check | `make lint` |
+| Tests with coverage (CI fails below 95%) | `make test` |
+| Lint and tests, the same as CI | `make check` |
+| Apply database migrations | `cd backend && uv run alembic upgrade head` |
+
+When you run the API or the worker on the host, set the hosts in `backend/.env` to
+`localhost` (Kafka: `localhost:9094`).
+
+The tests need no running services. The workflow tests download the Temporal time-skipping
+test server on the first run.
+
+## Project structure
+
+```text
+backend/src/
+├── api/              # FastAPI routers and dependency providers
+├── domain/           # Entities, value objects, services, ports (no framework imports)
+├── infrastructure/
+│   ├── database/postgres/   # ORM models, mappers, repositories, session
+│   ├── storage/minio/       # MinIO adapter for the storage port
+│   ├── message_broker/kafka # Event handler, consumer loop, worker entry point
+│   └── workflow_execution/temporalio/  # Ingestion workflow and activities
+├── libs/             # Settings, logging, enums, schemas, exceptions
+├── pipelines/        # Planned: loaders, chunking, embedding, graph, indexing
+└── agents/, mcp/, evaluation/, observability/   # Planned (empty)
+backend/tests/        # Mirrors src/: api, domain, infrastructure, kafka, workers
+docker/               # Compose stack and init scripts
+frontend/             # Vite + React scaffold
+docs/                 # Documentation and images
 ```
 
-For more information, please refer to the [Documentation](https://example.com).
-
-### Temporal Web UI
-
-The Temporal Web UI is accessible at:
-```http
-http://localhost:8081/
-```
-
-You can view the UI by navigating to the above URL in your web browser.
-
-<img src="docs/images/temporal-web-ui.png" alt="Temporal Web UI" width="100%" height="">
-
-
-#### Example: Manually upload/download file
-
-1. Upload file
-```
-curl -v \
-  -X PUT \
-  -H "Content-Type: application/pdf" \
-  --upload-file <your-file-path> \
-  <presigned-URL-from-MinIO-S3-bucket>
-```
-  
-2. Download file
-``` 
-  curl -o <filename> \
-  <presigned-URL-from-MinIO-S3-bucket>
-```
-
-
-<!-- ROADMAP -->
 ## Roadmap
 
-See the [open issues](https://github.com/othneildrew/Best-README-Template/issues) for a list of proposed features (and known issues).
+1. **Ingestion:** parse documents with Docling, chunk them, and store the chunks with
+   their provenance.
+2. **Retrieval:** embeddings and vector search in Qdrant.
+3. **GraphRAG:** entity and relationship extraction into Neo4j.
+4. **Agentic querying:** a LangGraph agent with MCP tools.
+5. **Evaluation and observability:** RAGAS, OpenTelemetry tracing.
+6. **Production:** authentication (JWT), tenant isolation in every store, deployment.
 
-
-
-<!-- CONTRIBUTING -->
-## Contributing
-
-Contributions are what make the open source community such an amazing place to be learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-
-
-<!-- LICENSE -->
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License. See [LICENSE](LICENSE).
 
-
-
-<!-- CONTACT -->
-## Contact
-
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-
-
-<!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
-* [SQLAlchemy - ORM Quick Start](https://docs.sqlalchemy.org/en/21/orm/quickstart.html)
-* [Aiokafka - Apache Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
-* [MinIO - Publish Events to Kafka](https://docs.min.io/aistor/administration/bucket-notifications/publish-events-to-kafka/?_gl=1*7nosf2*_up*MQ..*_ga*ODczNDc3ODE0LjE3ODk2MjAwODg.*_ga_EHESQ21MLT*czE3ODk2MjAwODgkbzEkZzAkdDE3ODk2MjAwODgkajYwJGwwJGgw)
-* [MinIO - Kafka Notification Settings](https://docs.min.io/aistor/reference/aistor-server/settings/notifications/kafka/?_gl=1*62ple9*_up*MQ..*_ga*OTM4MjM3MDkyLjE3ODk2MjAzMzQ.*_ga_EHESQ21MLT*czE3ODk2MjAzMzQkbzEkZzAkdDE3ODk2MjAzMzQkajYwJGwwJGgw&tab=kafka-multi-targets-configuration-settings#minio-server-envvar-bucket-notification-kafka)
-* [MinIO - MinIO Bucket Notification Guide](https://github.com/minio/minio/blob/master/docs/bucket/notifications/README.md)
 
-
-#### Additional Resources
-* [Medium Article - Building a Scalable, Production-Grade Agentic RAG Pipeline](https://levelup.gitconnected.com/building-a-scalable-production-grade-agentic-rag-pipeline-1168dcd36260?sk=847eaad13184d47f2c6a09a9d55e9750)
-* [Medium Article - Building Enterprise Python Microservices with FastAPI in 2025](https://blog.devops.dev/building-enterprise-python-microservices-with-fastapi-in-2025-10-10-kafka-saga-choreography-aeb9781b00a6)
-* [Medium Article - Setting Up a Kafka Cluster Using Docker Compose (Kraft Mode): A Step-by-Step Guide](https://medium.com/@darshak.kachchhi/setting-up-a-kafka-cluster-using-docker-compose-a-step-by-step-guide-a1ee5972b122)
-* [Medium Article - Dead Letter Queues: What They Are and When to Use Them](https://medium.com/@danthelion/dead-letter-queues-what-they-are-and-when-to-use-them-252c33fb4ced)
-* [MinIO S3 - Running MinIO locally with Docker Compose](https://pliutau.com/local-minio-docker-compose-buckets)
-* [MinIO S3 - How to Create MinIO Bucket Notifications](https://oneuptime.com/blog/post/2026-01-30-minio-bucket-notifications/view)
-* [Temporal.io - Set up PostgreSQL Visibility store](https://docs.temporal.io/self-hosted-guide/visibility/postgresql)
-* [OneUptime - How to Fix 'TopicExistsException' in Kafka](https://oneuptime.com/blog/post/2026-01-24-kafka-topic-exists-exception/view)
-
-
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/othneildrew/Best-README-Template.svg?style=flat-square
-[contributors-url]: https://github.com/othneildrew/Best-README-Template/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/othneildrew/Best-README-Template.svg?style=flat-square
-[forks-url]: https://github.com/othneildrew/Best-README-Template/network/members
-[stars-shield]: https://img.shields.io/github/stars/othneildrew/Best-README-Template.svg?style=flat-square
-[stars-url]: https://github.com/othneildrew/Best-README-Template/stargazers
-[issues-shield]: https://img.shields.io/github/issues/othneildrew/Best-README-Template.svg?style=flat-square
-[issues-url]: https://github.com/othneildrew/Best-README-Template/issues
-[license-shield]: https://img.shields.io/github/license/othneildrew/Best-README-Template.svg?style=flat-square
-[license-url]: https://github.com/othneildrew/Best-README-Template/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=flat-square&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/othneildrew
-[product-screenshot]: docs/system-design.png
+- [SQLAlchemy – ORM Quick Start](https://docs.sqlalchemy.org/en/21/orm/quickstart.html)
+- [aiokafka – Kafka client for asyncio](https://aiokafka.readthedocs.io/en/stable/consumer.html)
+- [MinIO – Publish events to Kafka](https://docs.min.io/aistor/administration/bucket-notifications/publish-events-to-kafka/)
+- [MinIO – Bucket notification guide](https://github.com/minio/minio/blob/master/docs/bucket/notifications/README.md)
+- [Temporal – PostgreSQL visibility store](https://docs.temporal.io/self-hosted-guide/visibility/postgresql)
+- [Building a scalable, production-grade agentic RAG pipeline](https://levelup.gitconnected.com/building-a-scalable-production-grade-agentic-rag-pipeline-1168dcd36260?sk=847eaad13184d47f2c6a09a9d55e9750)
+- [Building enterprise Python microservices with FastAPI](https://blog.devops.dev/building-enterprise-python-microservices-with-fastapi-in-2025-10-10-kafka-saga-choreography-aeb9781b00a6)
+- [Setting up a Kafka cluster with Docker Compose (KRaft mode)](https://medium.com/@darshak.kachchhi/setting-up-a-kafka-cluster-using-docker-compose-a-step-by-step-guide-a1ee5972b122)
+- [Dead letter queues: what they are and when to use them](https://medium.com/@danthelion/dead-letter-queues-what-they-are-and-when-to-use-them-252c33fb4ced)
+- [Running MinIO locally with Docker Compose](https://pliutau.com/local-minio-docker-compose-buckets)
