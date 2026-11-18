@@ -1,22 +1,19 @@
+"""HTTP endpoints for presigned document upload and download URLs."""
+
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from src.api.dependencies import get_current_tenant_id, get_document_service
 from src.domain.documents.service import DocumentService
-from src.libs.core.logger import get_logger
-from src.libs.schemas.document import (
-    CreateUploadRequest,
-    PresignedURLResponse,
-)
-
-logger = get_logger("api.routers.document")
+from src.libs.schemas.document import CreateUploadRequest, PresignedURLResponse
 
 router = APIRouter()
 
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
+
 
 @router.post(
     "/documents",
@@ -28,37 +25,17 @@ async def create_upload_url(
     tenant_id: TenantIdDep,
     service: DocServiceDep,
 ) -> PresignedURLResponse:
-    """This route generates a presigned MinIO URL for the upload of a document.
+    """Return a presigned URL to upload one document directly to storage (201).
 
-    Attributes
-    ----------
-    requests: CreateDocumentRequest
-       The request body containing the filename and tenant_id.
-    service: DocumentService
-       The service instance to interact with the document service
-
-    Returns
-    -------
-    PresignedURLResponse
-       The response containing the presigned URL and expiration time.
+    The client must send `required_headers` with the PUT request. A blank filename
+    or namespace returns 422.
     """
-    filename = request.filename
-    namespace = request.namespace
-    if not filename or not filename.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required parameter 'filename'",
-        )
-    if not namespace or not namespace.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required parameter 'namespace'",
-        )
-    return await service.create_upload_url(
+    presigned = await service.create_upload_url(
         tenant_id=tenant_id,
-        filename=filename,
-        namespace=namespace,
+        filename=request.filename,
+        namespace=request.namespace,
     )
+    return PresignedURLResponse.model_validate(presigned)
 
 
 @router.get(
@@ -71,34 +48,9 @@ async def get_download_url(
     tenant_id: TenantIdDep,
     service: DocServiceDep,
 ) -> PresignedURLResponse:
-    """
-    This route generates a presigned MinIO URL for the download of a document.
+    """Return a presigned URL to download a document of the caller's tenant.
 
-    Attributes
-    ----------
-    document_id: uuid.UUID
-       The ID of the document to be downloaded.
-    service: DocServiceDep
-      The service instance to interact with the document service
-
-    Returns
-    -------
-    PresignedURL
-      The response containing the presigned URL and expiration
+    An unknown document returns 404.
     """
-    """
-    This route generates a presigned MinIO URL for the download of a document.
-
-    Attributes
-    ----------
-    document_id: uuid.UUID
-       The ID of the document to be downloaded.
-    service: DocServiceDep
-      The service instance to interact with the document service
-
-    Returns
-    -------
-    PresignedURL
-      The response containing the presigned URL and expiration
-    """
-    return await service.get_download_url(document_id, tenant_id)
+    presigned = await service.get_download_url(document_id, tenant_id)
+    return PresignedURLResponse.model_validate(presigned)

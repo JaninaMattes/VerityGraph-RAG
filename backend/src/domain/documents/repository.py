@@ -5,20 +5,20 @@ from src.domain.documents.entities import DocumentEntity
 
 
 class DocumentRepository(Protocol):
-    """The repository layer handles all CRUD requests against a databse."""
+    """Persistence port for documents. Implementations flush but never commit."""
 
-    async def create(
-        self, document: DocumentEntity, idempotency_key: str
-    ) -> DocumentEntity:
-        raise NotImplementedError("Subclasses must implement create method")
+    async def create(self, document: DocumentEntity) -> DocumentEntity:
+        """Insert the document, or overwrite it if it exists (safe for retries)."""
+        raise NotImplementedError
 
-    async def update(
-        self, document: DocumentEntity, idempotency_key: str
-    ) -> DocumentEntity:
-        raise NotImplementedError("Subclasses must implement update method")
+    async def update(self, document: DocumentEntity) -> DocumentEntity:
+        """Save the changed document."""
+        raise NotImplementedError
 
     async def delete(self, document_id: UUID, tenant_id: UUID) -> None:
-        raise NotImplementedError("Subclasses must implement delete method")
+        """Delete the document. Raise DocumentNotFoundException if it does not exist."""
+        raise NotImplementedError
 
     async def get_one(self, document_id: UUID, tenant_id: UUID) -> DocumentEntity:
-        raise NotImplementedError("Subclasses must implement get_one method")
+        """Return the document. Raise DocumentNotFoundException if it does not exist."""
+        raise NotImplementedError

@@ -65,3 +65,11 @@ class IngestionJobEntity:
         self.error_message = error
         self.updated_at = datetime.now(UTC)
         self.finished_at = datetime.now(UTC)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, IngestionJobEntity):
+            return NotImplemented
+        return self.job_id == other.job_id
+
+    def __hash__(self) -> int:
+        return hash(self.job_id)

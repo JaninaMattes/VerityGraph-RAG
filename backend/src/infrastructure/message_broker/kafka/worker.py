@@ -1,11 +1,20 @@
-# src/infrastructure/message_broker/kafka/worker.py
+"""Composition root of the background worker.
+
+One process runs the Temporal worker (ingestion workflow and activities) and the Kafka
+consumer that starts workflows for new uploads. Start it with
+`python -m src.infrastructure.message_broker.kafka.worker`.
+"""
 
 import asyncio
 import signal
+from collections.abc import Coroutine
 from contextlib import AsyncExitStack
 from datetime import timedelta
+from typing import Any
 
+from aiokafka import AIOKafkaConsumer
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from src.infrastructure.database.postgres.engine import create_async_db_engine
@@ -20,125 +29,102 @@ from src.infrastructure.workflow_execution.temporalio.activities import (
 from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
 )
-from src.libs.core.config import get_settings
+from src.libs.core.config import Settings, get_settings
 from src.libs.core.logger import get_logger
-from src.pipelines.ingestion.pipeline import IngestionPipeline
 
 logger = get_logger("kafka.run_worker")
 
-""" Composition root that handles the concrete implementations of the 
-    infrastructure elements in the application.
-"""
+EVENT_TYPES = ("s3:ObjectCreated:Put", "s3:ObjectCreated:CompleteMultipartUpload")
+
+
+def create_consumer(settings: Settings) -> AIOKafkaConsumer:
+    """Create the Kafka consumer. Auto commit is off: the manager commits after success."""
+    return AIOKafkaConsumer(
+        *settings.kafka_topics,
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=settings.kafka_group_id,
+        enable_auto_commit=False,
+        auto_offset_reset=settings.kafka_auto_offset_reset,
+        max_poll_interval_ms=300000,
+        session_timeout_ms=30000,
+    )
+
+
+def install_signal_handlers(stop_event: asyncio.Event) -> None:
+    """Set `stop_event` on SIGTERM or SIGINT. Platforms without signals are tolerated."""
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except NotImplementedError:
+            logger.warning("Signal handlers are not supported on this platform.")
+
+
+async def run_until_stopped(
+    consumer: Coroutine[Any, Any, None], stop_event: asyncio.Event
+) -> None:
+    """Run `consumer` until `stop_event` is set, then cancel it.
+
+    If the consumer fails first, its error propagates, so the process exits and the
+    container restarts instead of running without a consumer.
+    """
+    consumer_task = asyncio.create_task(consumer)
+    stop_task = asyncio.create_task(stop_event.wait())
+    done, pending = await asyncio.wait(
+        {consumer_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+    )
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    if consumer_task in done:
+        consumer_task.result()
 
 
 async def main() -> None:
-    logger.info("Starting Background Kafka Worker...")
+    """Wire the infrastructure and run until a stop signal or a consumer failure."""
     settings = get_settings()
-
     async with AsyncExitStack() as stack:
-        # Initialize Core Infrastructure & Register Cleanup
         db_engine = create_async_db_engine(settings)
         stack.push_async_callback(db_engine.dispose)
 
-        session_factory = create_session_factory(db_engine)
-        minio_client = create_storage_client(settings)
-        minio_storage = create_storage_service(minio_client, settings)
-
-        # Compose the Ingestion Pipeline
-        ingestion_pipeline = IngestionPipeline()
-
-        # Connect to Temporal & Create Worker
+        storage = create_storage_service(create_storage_client(settings), settings)
+        activities = IngestFileActivities(create_session_factory(db_engine), storage)
         temporal_client = await Client.connect(
-            settings.temporal_url, namespace=settings.temporal_default_namespace
-        )
-        ingestion_activities = IngestFileActivities(
-            session_factory=session_factory,
-            storage=minio_storage,
-            ingestion_pipeline=ingestion_pipeline,
+            settings.temporal_url,
+            namespace=settings.temporal_default_namespace,
+            data_converter=pydantic_data_converter,
         )
         temporal_worker = Worker(
             temporal_client,
             task_queue=settings.temporal_task_queue,
             workflows=[DocumentIngestionWorkflow],
             activities=[
-                ingestion_activities.create_document_activity,
-                ingestion_activities.update_document_activity,
-                ingestion_activities.create_ingestion_job_activity,
-                ingestion_activities.update_ingestion_job_activity,
-                ingestion_activities.process_document_activity,
+                activities.create_document_activity,
+                activities.update_document_activity,
+                activities.create_ingestion_job_activity,
+                activities.update_ingestion_job_activity,
+                activities.process_document_activity,
             ],
             # Allow in-flight activities to finish before forceful cancellation
             graceful_shutdown_timeout=timedelta(seconds=30),
         )
-        logger.info(
-            "Temporal Worker started on task queue %s. ", settings.temporal_task_queue
-        )
 
-        # Initialize Kafka Event Manager and register MinIO object events
-        num_kafka_workers = settings.kafka_num_workers
-        event_manager = KafkaEventManager(
-            num_workers=num_kafka_workers,
+        event_manager = KafkaEventManager(create_consumer(settings))
+        handler = MinioObjectCreatedHandler(
+            temporal_client, settings.temporal_task_queue
         )
-        event_handler = MinioObjectCreatedHandler(
-            temporal_client, temporal_task_queue=settings.temporal_task_queue
-        )
-        event_manager.register_handler("s3:ObjectCreated:Put", event_handler)
-        event_manager.register_handler(
-            "s3:ObjectCreated:CompleteMultipartUpload", event_handler
-        )
+        for event_type in EVENT_TYPES:
+            event_manager.register_handler(event_type, handler)
 
-        # Setup Shutdown Handling (SIGTERM/SIGINT)
         stop_event = asyncio.Event()
-
-        def signal_handler():
-            logger.info("Shutdown signal received. Stopping worker gracefully.")
-            stop_event.set()
-
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
-                loop.add_signal_handler(sig, signal_handler)
-            except NotImplementedError:
-                logger.warning(
-                    "Signal handlers not supported on this platform (e.g., Windows)."
-                )
-
-        # Start Kafka Consumer as a background task
-        kafka_task = asyncio.create_task(
-            event_manager.start(
-                settings.kafka_topics,
-                bootstrap_servers=settings.kafka_bootstrap_servers,
-                group_id=settings.kafka_group_id,
-                enable_auto_commit=settings.kafka_enable_auto_commit,
-                auto_offset_reset=settings.kafka_auto_offset_reset,
-            )
-        )
-        logger.info("Kafka Consumer started.")
-
-        # Run Temporal Worker and Wait for Shutdown Signal
+        install_signal_handlers(stop_event)
         async with temporal_worker:
             logger.info(
-                "Temporal Worker started on task queue: %s.",
-                settings.temporal_task_queue,
+                "Worker running on task queue %s.", settings.temporal_task_queue
             )
-            # Block until SIGTERM/SIGINT is received
-            await stop_event.wait()
+            await run_until_stopped(event_manager.run(), stop_event)
 
-        # Ordered Cleanup: Stop Kafka before exiting the AsyncExitStack
-        logger.info("Stopping Kafka Consumer...")
-        await event_manager.stop()
-
-        # Ensure the kafka task is fully resolved and cleaned up
-        if not kafka_task.done():
-            kafka_task.cancel()
-            try:
-                await kafka_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Error while stopping Kafka consumer loop task.")
-
-    logger.info("Background Worker shutdown completed successfully.")
+    logger.info("Worker shutdown completed.")
 
 
 if __name__ == "__main__":

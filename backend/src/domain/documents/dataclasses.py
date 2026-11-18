@@ -1,7 +1,8 @@
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from pathlib import PurePosixPath
 from uuid import UUID
 
 from src.libs.enums.document import DocumentStatus, DocumentType, LanguageType
@@ -12,10 +13,17 @@ from src.libs.enums.storage import StorageType
 class StorageKey:
     """
     Canonical object identifier inside S3 storage.
-    Follows S3/MinIO best practices for lifecycle management and tenant isolation.
+
+    Layout: '<tenant_id>/<namespace>/<yyyy>/<mm>/<document_id>[.<ext>]'. The tenant
+    prefix isolates tenants; the date prefix supports lifecycle rules.
     """
 
     value: str
+
+    @property
+    def document_id(self) -> UUID:
+        """The document id in the last key segment. Raise ValueError if it is not a UUID."""
+        return UUID(PurePosixPath(self.value).stem)
 
     @classmethod
     def document(
@@ -25,7 +33,7 @@ class StorageKey:
         tenant_id: UUID,
         namespace: str,
         original_filename: str | None = None,  # allows to infer extension
-    ) -> "StorageKey":
+    ) -> StorageKey:
         now = datetime.now(UTC)
         # Clean namespace
         namespace = re.sub(r"[^a-zA-Z0-9\-]", "", namespace).lower() or "files"
@@ -79,6 +87,16 @@ class StoredFile:
     bucket_name: str | None
     version_id: str | None
     etag: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class PresignedUrl:
+    """A time-limited storage URL and the headers that the client must send with it."""
+
+    document_id: UUID
+    url: str
+    expires_at: timedelta
+    required_headers: dict[str, str]
 
 
 @dataclass(slots=True, frozen=True)

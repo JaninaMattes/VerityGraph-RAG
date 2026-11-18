@@ -16,6 +16,7 @@ class DocumentType(StrEnum):
     PPTX = "pptx"
     UNKNOWN = "unknown"
 
+
 class DocumentStatus(StrEnum):
     UPLOAD_PENDING = "pending"
     UPLOADED = "uploaded"
