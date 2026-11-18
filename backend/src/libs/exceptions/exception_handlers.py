@@ -1,3 +1,11 @@
+"""Map application exceptions to HTTP responses.
+
+Each exception family has one status code and one public error body. The body never
+contains the internal exception message; the full error is logged instead.
+"""
+
+from collections.abc import Awaitable, Callable
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -6,191 +14,46 @@ from src.libs.exceptions.exceptions import (
     AccessDeniedException,
     DatabaseInternalException,
     DatabaseOperationException,
-    EventHandlerException,
     NotFoundException,
-    ServiceException,
     StorageException,
-    StorageOperationException,
 )
 
 logger = get_logger("api.exceptions")
 
-
-async def database_op_exception_handler(
-    request: Request,
-    exc: DatabaseOperationException,
-) -> JSONResponse:
-    logger.exception(
-        "Database error during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=400,
-        content={
-            "error": "database_error",
-            "message": "The requested entry exists already.",
-        },
-    )
+# exception type -> (status code, error code, public message)
+ERROR_RESPONSES: dict[type[Exception], tuple[int, str, str]] = {
+    DatabaseOperationException: (
+        400,
+        "database_error",
+        "The requested entry exists already.",
+    ),
+    DatabaseInternalException: (500, "database_error", "Database operation failed."),
+    StorageException: (503, "storage_error", "A storage error occurred."),
+    AccessDeniedException: (403, "storage_error", "Access to storage denied."),
+    NotFoundException: (404, "not_found", "The requested resource couldn't be found."),
+    Exception: (500, "internal_server_error", "An unexpected error occurred."),
+}
 
 
-async def database_int_exception_handler(
-    request: Request,
-    exc: DatabaseInternalException,
-) -> JSONResponse:
-    logger.exception(
-        "Database error during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "database_error",
-            "message": "Database operation failed.",
-        },
-    )
+def _make_handler(
+    status_code: int, error: str, message: str
+) -> Callable[[Request, Exception], Awaitable[JSONResponse]]:
+    async def handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception(
+            "Request %s %s failed with %s", request.method, request.url, error
+        )
+        return JSONResponse(
+            status_code=status_code, content={"error": error, "message": message}
+        )
 
-
-async def storage_exception_handler(request: Request, exc: StorageOperationException):
-    logger.exception(
-        "Storage operations failure during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=503,
-        content={
-            "error": "storage_error",
-            "message": "A storage error occured.",
-        },
-    )
-
-
-async def access_denied_handler(request: Request, exc: AccessDeniedException):
-    logger.exception(
-        "Access denied to storage during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=403,
-        content={
-            "error": "storage_error",
-            "message": "Access to storage denied.",
-        },
-    )
-
-
-async def not_found_exception_handler(
-    request: Request,
-    exc: NotFoundException,
-) -> JSONResponse:
-    logger.exception(
-        "Resource not found during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=404,
-        content={
-            "error": "not_found",
-            "message": "The requested resource couldn't be found.",
-        },
-    )
-
-
-async def service_exception_handler(
-    request: Request,
-    exc: ServiceException,
-) -> JSONResponse:
-    logger.exception(
-        "Service failure during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "internal_error",
-            "message": "A service error occured.",
-        },
-    )
-
-
-async def event_handler_exception_handler(
-    request: Request, exc: EventHandlerException
-) -> JSONResponse:
-    logger.exception(
-        "Event handler failed during %s %s",
-        request.method,
-        request.url,
-    )
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "internal_error",
-            "message": "A service error occured.",
-        },
-    )
-
-
-async def unexpected_exception_handler(
-    request: Request,
-    exc: Exception,
-):
-    logger.exception(
-        "Unhandled exception during request %s %s",
-        request.method,
-        request.url,
-    )
-
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "internal_server_error",
-            "message": "An unexpected error occurred.",
-        },
-    )
+    return handler
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    """Register one handler per entry of ERROR_RESPONSES.
+
+    Starlette picks the handler of the most specific class, so AccessDeniedException
+    wins over its base StorageException.
     """
-    Register all application exception handlers.
-    """
-    app.add_exception_handler(
-        DatabaseOperationException,
-        database_op_exception_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(
-        DatabaseInternalException,
-        database_int_exception_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(
-        StorageException,
-        storage_exception_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(
-        AccessDeniedException,
-        access_denied_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(
-        NotFoundException,
-        not_found_exception_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(
-        ServiceException,
-        service_exception_handler,  # type: ignore
-    )
-
-    app.add_exception_handler(EventHandlerException, event_handler_exception_handler)  # type: ignore
-
-    app.add_exception_handler(
-        Exception,
-        unexpected_exception_handler,
-    )
+    for exc_type, (status_code, error, message) in ERROR_RESPONSES.items():
+        app.add_exception_handler(exc_type, _make_handler(status_code, error, message))

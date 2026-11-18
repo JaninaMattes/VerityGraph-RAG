@@ -1,16 +1,17 @@
+"""Request and response bodies of the /documents endpoints."""
+
 from datetime import timedelta
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from src.libs.enums.document import DocumentStatus
-
-"""The schema module provides the building blocks for the application."""
+from src.libs.types import NonEmptyStr
 
 
 class CreateUploadRequest(BaseModel):
-    filename: str
-    namespace: str = "files"
+    filename: NonEmptyStr
+    namespace: NonEmptyStr = "files"
     mime_type: str = "application/pdf"
 
 
@@ -20,6 +21,10 @@ class DocumentStatusResponse(BaseModel):
 
 
 class PresignedURLResponse(BaseModel):
+    """Built from a PresignedUrl with PresignedURLResponse.model_validate(value)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
     document_id: UUID
     url: str
     expires_at: timedelta

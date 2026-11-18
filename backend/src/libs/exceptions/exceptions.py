@@ -1,7 +1,8 @@
 """
 Application exception hierarchy.
 
-Replace existing exceptions with the following structure.
+The API maps each family to one HTTP response (see exception_handlers.py); the
+Temporal activities map them to retryable or non-retryable errors.
 """
 
 from uuid import UUID
@@ -103,7 +104,7 @@ class IngestionJobNotFoundException(NotFoundException):
     def __init__(self, job_id: UUID):
         super().__init__(f"Job with id '{job_id}' was not found.")
 
-        self.chunk_id = job_id
+        self.job_id = job_id
 
 
 class UserNotFoundException(NotFoundException):
@@ -229,115 +230,3 @@ class AccessDeniedException(StorageException):
         )
 
         self.bucket_name = bucket_name
-
-
-# ============================================================
-# Event Manager Exceptions
-# ============================================================
-class EventHandlerException(ApplicationException):
-    """
-    Base exception for event handler failures.
-    """
-
-
-class EventHandlerProcessingException(EventHandlerException):
-    def __init__(
-        self,
-        event_type: str,
-    ):
-        super().__init__(
-            f"Error triggered when processing MinIO 'ObjectCreated' events of type {event_type}."
-        )
-
-        self.event_type = event_type
-
-
-class EventHandlerNotRegisterdException(EventHandlerException):
-    def __init__(
-        self,
-        event_type: str,
-    ):
-        super().__init__(f"No handler registered for event of type {event_type}.")
-
-        self.event_type = event_type
-
-
-class AIOKafkaConsumerException(EventHandlerException):
-    """
-    Base exception for async Kafka consumer failures.
-    """
-
-
-class AIOKafkaConsumerAuthException(AIOKafkaConsumerException):
-    def __init__(
-        self,
-        topics: set[str],
-    ):
-        super().__init__(
-            f"Access to Kafka topics '{topics}' refused due to missing permissions or bad credentials."
-        )
-
-        self.topics = topics
-
-
-class AIOKafkaConsumerOffsetException(AIOKafkaConsumerException):
-    def __init__(
-        self, message: str = "The 'auto_offset_reset' policy has not been set"
-    ):
-        super().__init__(message)
-
-
-class AIOKafkaConsumerRecordTooLargeException(AIOKafkaConsumerException):
-    def __init__(
-        self, message: str = "The message exceeds 'max_partition_fetch_bytes'."
-    ):
-        super().__init__(message)
-
-
-class AIOKafkaConsumerInvalidMessageException(AIOKafkaConsumerException):
-    def __init__(
-        self,
-        message: str = "The CRC check on the message failed due to connection failure or code bug.",
-    ):
-        super().__init__(message)
-
-
-# ============================================================
-# Service Layer Exceptions
-# ============================================================
-
-
-class ServiceException(ApplicationException):
-    """
-    Base exception for service layer failures.
-    """
-
-
-class AuthServiceException(ServiceException):
-    """
-    Document service failure.
-    """
-
-
-class DocumentServiceException(ServiceException):
-    """
-    Document service failure.
-    """
-
-
-class JobServiceException(ServiceException):
-    """
-    Document service failure.
-    """
-
-
-class UserServiceException(ServiceException):
-    """
-    User service failure.
-    """
-
-
-class TenantServiceException(ServiceException):
-    """
-    Tenant service failure.
-    """

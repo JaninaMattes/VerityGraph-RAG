@@ -1,9 +1,10 @@
-# Loads settings from .env using Pydantic
+"""Application settings, loaded from environment variables and the nearest .env file."""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, HttpUrl, PostgresDsn, RedisDsn, SecretStr
+from pydantic import Field, HttpUrl, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Dynamically find the directory of .env file
@@ -44,20 +45,16 @@ class Settings(BaseSettings):
     reset_token_expire_minutes: int = Field(default=60, gt=0)
 
     # ---------------------------------------------------------
-    # Cache (e.g. Redis)
-    # ---------------------------------------------------------
-    redis_url: RedisDsn
-    redis_password: SecretStr
-
-    # ---------------------------------------------------------
     # Database (e.g. PostgreSQL)
     # ---------------------------------------------------------
 
     postgres_url: PostgresDsn
     postgres_echo: bool = False
+    # Connections per process. Keep (replicas x workers x pool) below max_connections.
+    postgres_pool_size: int = Field(default=5, gt=0)
 
     # ---------------------------------------------------------
-    # S3 Storagee (e.g. MinIO S3)
+    # S3 Storage (e.g. MinIO S3)
     # ---------------------------------------------------------
 
     minio_url: str
@@ -66,19 +63,15 @@ class Settings(BaseSettings):
     minio_default_bucket: str = "files"
     minio_region: str = "us-east-1"
     minio_secure: bool = False
-    minio_sse_customer_key: SecretStr
 
     # ---------------------------------------------------------
-    # Message Broker (e.g. Kafka KRaft)
+    # Message Broker (e.g. Kafka KRaft). Offsets are always committed manually.
     # ---------------------------------------------------------
 
-    kafka_url: str
     kafka_bootstrap_servers: str
     kafka_topics: list[str] = ["minio-events"]
     kafka_group_id: str = "minio-ingestion-group"
-    kafka_auto_offset_reset: str = "earliest"
-    kafka_enable_auto_commit: bool = False  # manually commit
-    kafka_num_workers: int = 2
+    kafka_auto_offset_reset: Literal["earliest", "latest"] = "earliest"
 
     # ---------------------------------------------------------
     # Temporal
@@ -97,4 +90,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore
+    """Return the process-wide settings. Raise ValidationError if a required value is missing."""
+    return Settings()  # type: ignore[call-arg]
