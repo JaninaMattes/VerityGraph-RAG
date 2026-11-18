@@ -430,3 +430,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Test reports
+pytest-report.xml
+.coverage
