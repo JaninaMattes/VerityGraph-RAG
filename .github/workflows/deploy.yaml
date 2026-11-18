@@ -13,3 +13,6 @@ jobs:
     name: Build and Push Universal Backend Image
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deployment placeholder
+        run: echo "Deployment is not configured yet."
