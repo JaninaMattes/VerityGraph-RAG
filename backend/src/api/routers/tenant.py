@@ -1,24 +1,33 @@
+"""HTTP endpoints for tenants. A caller can only read or change its own tenant."""
+
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from src.api.dependencies import get_current_tenant_id, get_tenant_service
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.service import TenantService
-from src.libs.core.logger import get_logger
+from src.libs.exceptions.exceptions import TenantNotFoundException
 from src.libs.schemas.tenant import (
     CreateTenantRequest,
     TenantResponse,
     UpdateTenantRequest,
 )
 
-logger = get_logger("api.routers.tenant")
-
 TenantServiceDep = Annotated[TenantService, Depends(get_tenant_service)]
-TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
+CurrentTenantDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
 
 router = APIRouter()
+
+
+def ensure_own_tenant(tenant_id: uuid.UUID, current_tenant_id: uuid.UUID) -> None:
+    """Raise TenantNotFoundException (404) if the path names another tenant.
+
+    404 instead of 403 does not reveal whether the other tenant exists.
+    """
+    if tenant_id != current_tenant_id:
+        raise TenantNotFoundException(tenant_id)
 
 
 @router.post(
@@ -30,26 +39,10 @@ async def create_tenant(
     request: CreateTenantRequest,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    """This endpoint creates a new tenant.
-
-    Attributes
-    ----------
-    request: CreateTenantRequest
-        The request body containing the organisation name.
-    service: TenantServiceDep
-
-    Returns
-    -------
-    TenantResponse
-        The response containing the created tenant.
-    """
-    organisation_name = request.organisation
-    if not organisation_name or not organisation_name.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required parameter 'organisation' name",
-        )
-    return await service.create(Tenant(organisation_name))
+    """Create a tenant (201). A blank organisation name returns 422."""
+    return TenantResponse.model_validate(
+        await service.create(Tenant(request.organisation))
+    )
 
 
 @router.get(
@@ -58,23 +51,13 @@ async def create_tenant(
     response_model=TenantResponse,
 )
 async def read_tenant(
-    tenant_id: TenantIdDep,
+    tenant_id: uuid.UUID,
+    current_tenant_id: CurrentTenantDep,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    """This endpoint retrieves a tenant by its ID.
-
-    Attributes
-    ----------
-    tenant_id: UUID
-       The ID of the tenant to be retrieved.
-    service: TenantServiceDep
-
-    Returns
-    -------
-    TenantResponse
-        The response containing the retrieved tenant.
-    """
-    return await service.get(tenant_id)
+    """Return the caller's tenant. Another or unknown tenant returns 404."""
+    ensure_own_tenant(tenant_id, current_tenant_id)
+    return TenantResponse.model_validate(await service.get(tenant_id))
 
 
 @router.patch(
@@ -83,32 +66,17 @@ async def read_tenant(
     response_model=TenantResponse,
 )
 async def update_tenant(
-    tenant_id: TenantIdDep,
+    tenant_id: uuid.UUID,
     request: UpdateTenantRequest,
+    current_tenant_id: CurrentTenantDep,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    """This endpoint updates a tenant's information.
-
-    Attributes
-    ----------
-    tenant_id: UUID
-       The ID of the tenant to be updated.
-    request: UpdateTenantRequest
-      The request body containing the updated tenant information.
-    service: TenantServiceDep
-
-    Returns
-    -------
-    TenantResponse: The response containing the updated tenant.
-
-    """
-    organisation_name = request.organisation
-    if not organisation_name or not organisation_name.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Missing required parameter 'organisation' name",
-        )
-    return await service.update(UpdateTenant(tenant_id, organisation=organisation_name))
+    """Rename the caller's tenant. Another tenant returns 404; a blank name returns 422."""
+    ensure_own_tenant(tenant_id, current_tenant_id)
+    updated = await service.update(
+        UpdateTenant(tenant_id, organisation=request.organisation)
+    )
+    return TenantResponse.model_validate(updated)
 
 
 @router.delete(
@@ -116,18 +84,10 @@ async def update_tenant(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def revoke_tenant(
-    tenant_id: TenantIdDep,
+    tenant_id: uuid.UUID,
+    current_tenant_id: CurrentTenantDep,
     service: TenantServiceDep,
 ) -> None:
-    """This endpoint revokes a tenant's access.
-    Attributes
-    ----------
-    tenant_id: UUID
-       The ID of the tenant to be revoked.
-    service: TenantServiceDep
-
-    Returns
-    -------
-    None: The response indicating the successful deletion of the tenant.
-    """
+    """Delete the caller's tenant (204). Another or unknown tenant returns 404."""
+    ensure_own_tenant(tenant_id, current_tenant_id)
     await service.delete(tenant_id)
