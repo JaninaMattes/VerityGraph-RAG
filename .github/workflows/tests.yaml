@@ -35,17 +35,6 @@ jobs:
           version: "0.12.19"
           enable-cache: true
 
-      # Install pinned binary version of Temporal CLI instead of `curl | sh`
-      - name: Install Temporal CLI
-        run: |
-          TEMPORAL_VERSION="1.4.0" # Pin to a specific, tested version
-          curl -sSfL https://github.com/temporalio/cli/releases/download/v${TEMPORAL_VERSION}/temporal_cli_${TEMPORAL_VERSION}_linux_amd64.tar.gz -o temporal.tar.gz
-          # Optional but recommended: verify SHA256 checksum here
-          tar -xzf temporal.tar.gz
-          chmod +x temporal
-          sudo mv temporal /usr/local/bin/temporal
-          rm temporal.tar.gz
-
       - name: Install the project
         working-directory: ./backend
         env:
@@ -58,14 +47,10 @@ jobs:
           DEV_TENANT_ID=12bf3456-7d89-12d3-a456-78c91cf2b34f
           ENVIRONMENT=testing
           SECRET_KEY=ci-test-secret-key-12345678901234567890123456789012
-          REDIS_URL=redis://localhost:6379/0
-          REDIS_PASSWORD=ci-password
           POSTGRES_URL=postgresql+asyncpg://test:test@localhost:5432/test_db
           MINIO_URL=localhost:9000
           MINIO_ROOT_USER=ci-minio
           MINIO_ROOT_PASSWORD=ci-password
-          MINIO_SSE_CUSTOMER_KEY=local-dev-sse-key-32-chars-min
-          KAFKA_URL=localhost:9092
           KAFKA_BOOTSTRAP_SERVERS=localhost:9092
           TEMPORAL_URL=localhost:7233
           TEMPORAL_TASK_QUEUE=ci-task-queue
@@ -81,8 +66,8 @@ jobs:
         run: uv run ruff format --check .
       - name: Run tests
         working-directory: ./backend
-        # Create results for analytics dashboard
-        run: uv run pytest tests --junitxml=pytest-report.xml
+        # The workflow tests download the Temporal time-skipping test server.
+        run: uv run pytest tests --junitxml=pytest-report.xml --cov --cov-fail-under=95
 
       # Upload test results as artifacts
       - name: Upload test results
