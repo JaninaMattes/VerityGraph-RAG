@@ -15,12 +15,14 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl, PostgresDsn, SecretStr
 
 from src.api.dependencies import (
+    get_chunk_service,
     get_current_tenant_id,
     get_document_service,
     get_settings,
     get_tenant_service,
     get_user_service,
 )
+from src.domain.chunks.service import ChunkService
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.service import DocumentService
@@ -190,6 +192,11 @@ def mock_document_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_chunk_service() -> AsyncMock:
+    return AsyncMock(spec=ChunkService)
+
+
+@pytest.fixture
 def mock_tenant_service() -> AsyncMock:
     return AsyncMock(spec=TenantService)
 
@@ -203,12 +210,14 @@ def mock_user_service() -> AsyncMock:
 def api_overrides(
     mock_tenant_id: uuid.UUID,
     mock_document_service: AsyncMock,
+    mock_chunk_service: AsyncMock,
     mock_tenant_service: AsyncMock,
     mock_user_service: AsyncMock,
 ) -> None:
     """Replace the current tenant and all services with mocks."""
     app.dependency_overrides[get_current_tenant_id] = lambda: mock_tenant_id
     app.dependency_overrides[get_document_service] = lambda: mock_document_service
+    app.dependency_overrides[get_chunk_service] = lambda: mock_chunk_service
     app.dependency_overrides[get_tenant_service] = lambda: mock_tenant_service
     app.dependency_overrides[get_user_service] = lambda: mock_user_service
 

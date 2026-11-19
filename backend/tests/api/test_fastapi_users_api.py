@@ -8,7 +8,7 @@ from httpx import AsyncClient
 
 from src.domain.users.dataclasses import UpdateUser, User
 from src.libs.exceptions.exceptions import (
-    DatabaseOperationException,
+    ConflictException,
     UserNotFoundException,
 )
 
@@ -75,20 +75,20 @@ class TestRegisterUser:
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         mock_user_service.create.assert_not_awaited()
 
-    async def test_duplicate_returns_400(
+    async def test_duplicate_returns_409(
         self, user_client: AsyncClient, mock_user_service: AsyncMock
     ):
         """
         GIVEN the email exists already
         WHEN POST /api/v1/users is called
-        THEN the response is 400 with the database error body
+        THEN the response is 409 with the conflict error body
         """
-        mock_user_service.create.side_effect = DatabaseOperationException("duplicate")
+        mock_user_service.create.side_effect = ConflictException("duplicate")
 
         response = await user_client.post("/api/v1/users", json=USER_BODY)
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["error"] == "database_error"
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert response.json()["error"] == "conflict"
 
 
 class TestReadUser:

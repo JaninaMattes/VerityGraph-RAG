@@ -1,4 +1,4 @@
-"""Tests for the domain services (tenants, users, documents).
+"""Tests for the domain services (tenants, users, documents, chunks).
 
 Services return domain objects and let domain and infrastructure errors propagate
 unchanged; the API layer maps them to HTTP responses.
@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
+from src.domain.chunks.entities import ChunkDraft, ChunkingConfig, build_chunks
+from src.domain.chunks.service import ChunkService
 from src.domain.documents.dataclasses import PresignedUrl
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
@@ -20,9 +22,9 @@ from src.libs.enums.tenant import TenantStatus
 from src.libs.enums.user import UserRole, UserStatus
 from src.libs.exceptions.exceptions import (
     BucketNotFoundException,
-    DatabaseInternalException,
+    DatabaseException,
     DocumentNotFoundException,
-    StorageOperationException,
+    StorageException,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -92,9 +94,9 @@ class TestTenantService:
         WHEN a tenant is read
         THEN the original error propagates
         """
-        repo.get_one.side_effect = DatabaseInternalException("db down")
+        repo.get_one.side_effect = DatabaseException("db down")
 
-        with pytest.raises(DatabaseInternalException):
+        with pytest.raises(DatabaseException):
             await TenantService(repo).get(mock_tenant_id)
 
 
@@ -243,11 +245,9 @@ class TestDocumentService:
         WHEN an upload URL is requested
         THEN the storage error propagates
         """
-        storage.create_presigned_url.side_effect = StorageOperationException(
-            "files", "x"
-        )
+        storage.create_presigned_url.side_effect = StorageException("x")
 
-        with pytest.raises(StorageOperationException):
+        with pytest.raises(StorageException):
             await DocumentService(storage, repo).create_upload_url(
                 mock_tenant_id, "a.pdf"
             )
@@ -305,3 +305,52 @@ class TestDocumentService:
             )
 
         storage.create_presigned_url.assert_not_called()
+
+
+class TestChunkService:
+    """ChunkService lists the chunks of a document that the tenant owns."""
+
+    async def test_chunks_of_own_document_are_listed(
+        self, document_entity, mock_tenant_id
+    ):
+        """
+        GIVEN a document of the tenant with one chunk
+        WHEN its chunks are listed
+        THEN the ownership is checked first AND the chunks are returned
+        """
+        chunks = build_chunks(
+            [ChunkDraft(content="Acme invests in Globex.", token_count=5)],
+            document_id=document_entity.document_id,
+            tenant_id=mock_tenant_id,
+            config=ChunkingConfig(component="docling", component_version="1"),
+        )
+        doc_repo, chunk_repo = AsyncMock(), AsyncMock()
+        doc_repo.get_one.return_value = document_entity
+        chunk_repo.list_for_document.return_value = chunks
+
+        result = await ChunkService(doc_repo, chunk_repo).list_for_document(
+            document_entity.document_id, mock_tenant_id
+        )
+
+        assert result == chunks
+        doc_repo.get_one.assert_awaited_once_with(
+            document_entity.document_id, mock_tenant_id
+        )
+
+    async def test_unknown_document_raises_not_found(
+        self, mock_document_id, mock_tenant_id
+    ):
+        """
+        GIVEN the tenant has no such document
+        WHEN its chunks are listed
+        THEN DocumentNotFoundException propagates AND no chunks are read
+        """
+        doc_repo, chunk_repo = AsyncMock(), AsyncMock()
+        doc_repo.get_one.side_effect = DocumentNotFoundException(mock_document_id)
+
+        with pytest.raises(DocumentNotFoundException):
+            await ChunkService(doc_repo, chunk_repo).list_for_document(
+                mock_document_id, mock_tenant_id
+            )
+
+        chunk_repo.list_for_document.assert_not_awaited()

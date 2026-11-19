@@ -14,10 +14,10 @@ from src.infrastructure.storage.minio.storage import MinioStorage
 from src.infrastructure.storage.service import create_storage_service
 from src.libs.core.config import Settings
 from src.libs.exceptions.exceptions import (
-    AccessDeniedException,
     BucketNotFoundException,
     ObjectNotFoundException,
-    StorageOperationException,
+    StorageAccessDeniedException,
+    StorageException,
 )
 
 KEY = StorageKey("tenant/files/2026/01/doc.pdf")
@@ -52,6 +52,44 @@ class TestCreateBucket:
         storage.create_bucket()
 
         assert client.make_bucket.called is creates
+
+
+class TestCheckAvailable:
+    """check_available succeeds only when the bucket can be reached."""
+
+    def test_existing_bucket_passes(self, storage, client):
+        """
+        GIVEN the bucket exists
+        WHEN check_available is called
+        THEN no error is raised
+        """
+        client.bucket_exists.return_value = True
+
+        storage.check_available()
+
+        client.bucket_exists.assert_called_once_with(bucket_name="files")
+
+    def test_missing_bucket_raises(self, storage, client):
+        """
+        GIVEN the bucket does not exist
+        WHEN check_available is called
+        THEN BucketNotFoundException is raised
+        """
+        client.bucket_exists.return_value = False
+
+        with pytest.raises(BucketNotFoundException):
+            storage.check_available()
+
+    def test_s3_error_is_translated(self, storage, client):
+        """
+        GIVEN MinIO denies access
+        WHEN check_available is called
+        THEN the S3 error becomes StorageAccessDeniedException
+        """
+        client.bucket_exists.side_effect = s3_error("AccessDenied")
+
+        with pytest.raises(StorageAccessDeniedException):
+            storage.check_available()
 
 
 class TestCreatePresignedUrl:
@@ -167,9 +205,9 @@ class TestErrorTranslation:
         ("code", "expected"),
         [
             ("NoSuchBucket", BucketNotFoundException),
-            ("AccessDenied", AccessDeniedException),
-            ("InvalidAccessKeyId", AccessDeniedException),
-            ("InternalError", StorageOperationException),
+            ("AccessDenied", StorageAccessDeniedException),
+            ("InvalidAccessKeyId", StorageAccessDeniedException),
+            ("InternalError", StorageException),
         ],
     )
     def test_s3_error_codes_are_translated(

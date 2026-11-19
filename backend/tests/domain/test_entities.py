@@ -5,7 +5,6 @@ import uuid
 
 import pytest
 
-from src.domain.chunks.entities import DocumentChunkEntity
 from src.domain.documents.dataclasses import StorageKey, StoredFile
 from src.libs.enums.document import DocumentStatus, LanguageType
 from src.libs.enums.ingestionjob import ProcessingStatus
@@ -215,29 +214,3 @@ class TestUserEntity:
         assert user_entity != object()
         assert hash(user_entity) == hash(user_entity.user_id)
         assert user_entity.username in repr(user_entity)
-
-
-class TestDocumentChunkEntity:
-    """DocumentChunkEntity stores its constructor values."""
-
-    def test_values_are_stored(self, now):
-        """
-        GIVEN chunk values
-        WHEN a chunk entity is created
-        THEN it exposes the values
-        """
-        chunk = DocumentChunkEntity(
-            chunk_id=uuid.uuid4(),
-            document_id=uuid.uuid4(),
-            chunk_index=3,
-            content="text",
-            page_number=1,
-            section_title=None,
-            token_count=2,
-            chunk_metadata={},
-            source_locator={"page": 1},
-            created_at=now,
-            updated_at=now,
-        )
-
-        assert (chunk.chunk_idx, chunk.content, chunk.token_count) == (3, "text", 2)

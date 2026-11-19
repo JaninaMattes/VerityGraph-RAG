@@ -7,6 +7,13 @@ import pytest
 from fastapi import status
 from httpx import AsyncClient
 
+from src.domain.chunks.entities import (
+    BoundingBox,
+    ChunkDraft,
+    ChunkingConfig,
+    ChunkSpan,
+    build_chunks,
+)
 from src.domain.documents.dataclasses import PresignedUrl
 from src.libs.exceptions.exceptions import DocumentNotFoundException
 
@@ -129,3 +136,76 @@ class TestGetDownloadUrl:
         response = await doc_client.get("/api/v1/documents/not-a-uuid")
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TestListChunks:
+    """GET /documents/{document_id}/chunks returns the chunks with their evidence."""
+
+    async def test_returns_chunks_with_spans(
+        self,
+        doc_client: AsyncClient,
+        mock_chunk_service,
+        mock_document_id,
+        mock_tenant_id,
+    ):
+        """
+        GIVEN a processed document with one chunk on page 1
+        WHEN GET /api/v1/documents/{id}/chunks is called
+        THEN the response is 200 with the chunk text, pages and highlight boxes
+        """
+        span = ChunkSpan(
+            source_ref="#/texts/0",
+            label="text",
+            page_no=1,
+            bbox=BoundingBox(72, 728.5, 180, 717.5),
+            char_start=0,
+            char_end=23,
+        )
+        mock_chunk_service.list_for_document.return_value = build_chunks(
+            [
+                ChunkDraft(
+                    content="Acme invests in Globex.", token_count=5, spans=(span,)
+                )
+            ],
+            document_id=mock_document_id,
+            tenant_id=mock_tenant_id,
+            config=ChunkingConfig(component="docling", component_version="1"),
+        )
+
+        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
+
+        assert response.status_code == status.HTTP_200_OK
+        (chunk,) = response.json()
+        assert chunk["content"] == "Acme invests in Globex."
+        assert (chunk["chunk_index"], chunk["page_start"], chunk["page_end"]) == (
+            0,
+            1,
+            1,
+        )
+        assert chunk["spans"][0]["bbox"] == {
+            "left": 72.0,
+            "top": 728.5,
+            "right": 180.0,
+            "bottom": 717.5,
+            "origin": "BOTTOMLEFT",
+        }
+        assert "tenant_id" not in chunk
+        mock_chunk_service.list_for_document.assert_awaited_once_with(
+            mock_document_id, mock_tenant_id
+        )
+
+    async def test_unknown_document_returns_404(
+        self, doc_client: AsyncClient, mock_chunk_service, mock_document_id
+    ):
+        """
+        GIVEN the tenant has no such document
+        WHEN GET /api/v1/documents/{id}/chunks is called
+        THEN the response is 404
+        """
+        mock_chunk_service.list_for_document.side_effect = DocumentNotFoundException(
+            mock_document_id
+        )
+
+        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND

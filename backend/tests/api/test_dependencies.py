@@ -6,9 +6,13 @@ from unittest.mock import MagicMock
 from minio import Minio
 
 from src.api import dependencies as deps
+from src.domain.chunks.service import ChunkService
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
+from src.infrastructure.database.postgres.repositories.chunk import (
+    PostgresChunkRepository,
+)
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
@@ -64,12 +68,14 @@ class TestProviders:
             deps.get_tenant_repository(session),
             deps.get_user_repository(session),
             deps.get_document_repository(session),
+            deps.get_chunk_repository(session),
         ]
 
         assert [type(r) for r in repositories] == [
             PostgresTenantRepository,
             PostgresUserRepository,
             PostgresDocumentRepository,
+            PostgresChunkRepository,
         ]
         assert all(r._session is session for r in repositories)
 
@@ -84,9 +90,12 @@ class TestProviders:
         document_service = deps.get_document_service(repo, storage)
         tenant_service = deps.get_tenant_service(repo)
         user_service = deps.get_user_service(repo)
+        chunk_service = deps.get_chunk_service(repo, repo)
 
         assert isinstance(document_service, DocumentService)
         assert document_service.storage is storage
         assert isinstance(tenant_service, TenantService)
         assert isinstance(user_service, UserService)
         assert user_service.user_repository is repo
+        assert isinstance(chunk_service, ChunkService)
+        assert chunk_service.chunk_repository is repo
