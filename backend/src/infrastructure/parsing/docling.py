@@ -48,7 +48,7 @@ class DoclingChunker(DocumentChunker):
         with self._lock:
             try:
                 document = self._converter.convert(file_path).document
-            except ConversionError as exc:
+            except Exception as exc:
                 raise DocumentParsingException(
                     f"Docling cannot convert '{file_path.name}': {exc}"
                 ) from exc
