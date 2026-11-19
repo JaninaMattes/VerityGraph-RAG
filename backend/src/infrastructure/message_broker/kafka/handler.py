@@ -14,6 +14,20 @@ from src.libs.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+METADATA_PREFIX = "x-amz-meta-"
+
+
+def user_metadata(s3_object: dict[str, Any]) -> dict[str, str]:
+    """Return the object's user metadata with plain keys.
+
+    MinIO reports the keys as signed into the upload URL ('x-amz-meta-tenant_id');
+    this returns them as 'tenant-id', so either spelling is accepted.
+    """
+    return {
+        key.lower().removeprefix(METADATA_PREFIX).replace("_", "-"): value
+        for key, value in (s3_object.get("userMetadata") or {}).items()
+    }
+
 
 class MinioObjectCreatedHandler(EventHandler):
     """Thin handler: Kafka is the trigger, Temporal owns the transaction.
@@ -39,7 +53,7 @@ class MinioObjectCreatedHandler(EventHandler):
         bucket = s3.get("bucket", {}).get("name", "")
         s3_object = s3.get("object", {})
         object_key = urllib.parse.unquote(s3_object.get("key", ""))
-        metadata = s3_object.get("userMetadata", {})
+        metadata = user_metadata(s3_object)
         tenant_id = metadata.get("tenant-id")
 
         if not bucket or not object_key or not tenant_id:
