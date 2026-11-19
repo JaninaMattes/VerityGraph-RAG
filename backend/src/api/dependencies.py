@@ -1,15 +1,20 @@
-"""FastAPI dependency providers: settings, request session, repositories and services."""
+"""FastAPI dependency providers: settings, caller, session, repositories, services."""
 
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
+from functools import cache
 from typing import Annotated
 
 from fastapi import Depends, Request
+from fastapi.security import OAuth2PasswordBearer
 from minio import Minio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.auth.entities import Principal
+from src.domain.auth.hasher import PasswordHasher
+from src.domain.auth.service import AuthService
 from src.domain.chunks.service import ChunkService
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
@@ -27,24 +32,39 @@ from src.infrastructure.database.postgres.repositories.user import (
     PostgresUserRepository,
 )
 from src.infrastructure.database.postgres.session import get_db_session
-from src.infrastructure.storage.client import create_storage_client
+from src.infrastructure.security.passwords import Argon2PasswordHasher
+from src.infrastructure.security.tokens import decode_access_token
 from src.infrastructure.storage.minio.storage import MinioStorage
 from src.infrastructure.storage.service import create_storage_service
 from src.libs.core.config import Settings, get_settings
+from src.libs.exceptions.exceptions import (
+    AuthenticationException,
+    PermissionDeniedException,
+)
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 # scope="function" commits before the response is sent, so a failed commit returns 500.
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
 
+# auto_error=False: a missing token raises AuthenticationException, so the 401 has
+# the same error body as every other error.
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{get_settings().api_prefix}/auth/token", auto_error=False
+)
 
-# TODO: replace with the tenant id from a verified JWT.
-async def get_current_tenant_id(settings: SettingsDep) -> uuid.UUID:
-    """Return the tenant of the caller. For now this is the fixed DEV_TENANT_ID."""
-    return uuid.UUID(settings.dev_tenant_id)
+
+@cache
+def get_password_hasher() -> PasswordHasher:
+    """One hasher per process (it caches its dummy hash)."""
+    return Argon2PasswordHasher()
 
 
-def get_minio_client(settings: SettingsDep) -> Minio:
-    return create_storage_client(settings)
+HasherDep = Annotated[PasswordHasher, Depends(get_password_hasher)]
+
+
+def get_minio_client(request: Request) -> Minio:
+    """Return the MinIO client that the app created at startup (one per process)."""
+    return request.app.state.storage_client
 
 
 def get_minio_provider(
@@ -108,8 +128,47 @@ def get_tenant_service(
 
 def get_user_service(
     user_repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
+    hasher: HasherDep,
 ) -> UserService:
-    return UserService(user_repository=user_repository)
+    return UserService(user_repository=user_repository, hasher=hasher)
+
+
+def get_auth_service(
+    user_repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
+    hasher: HasherDep,
+) -> AuthService:
+    return AuthService(user_repository=user_repository, hasher=hasher)
+
+
+async def get_current_principal(
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    settings: SettingsDep,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> Principal:
+    """Return the caller of the request.
+
+    Raise AuthenticationException (401) if the bearer token is missing or invalid,
+    or if its user no longer exists or is disabled.
+    """
+    if not token:
+        raise AuthenticationException("The request has no bearer token.")
+    user_id, tenant_id = decode_access_token(token, settings)
+    return await auth_service.resolve(user_id, tenant_id)
+
+
+PrincipalDep = Annotated[Principal, Depends(get_current_principal)]
+
+
+async def get_current_tenant_id(principal: PrincipalDep) -> uuid.UUID:
+    """Return the caller's tenant. Every tenant-scoped query uses it."""
+    return principal.tenant_id
+
+
+def require_admin(principal: PrincipalDep) -> Principal:
+    """Return the caller. Raise PermissionDeniedException (403) if it is not admin."""
+    if not principal.is_admin:
+        raise PermissionDeniedException(f"User {principal.user_id} is not an admin.")
+    return principal
 
 
 def get_chunk_service(
