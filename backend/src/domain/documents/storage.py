@@ -13,12 +13,16 @@ from src.domain.documents.dataclasses import StorageKey, StoredFile
 class StorageProvider(Protocol):
     """Object storage for documents (MinIO, AWS S3, ...).
 
-    Errors: BucketNotFoundException, ObjectNotFoundException, AccessDeniedException
-    or StorageOperationException.
+    Errors: BucketNotFoundException, ObjectNotFoundException,
+    StorageAccessDeniedException or StorageException.
     """
 
     def create_bucket(self) -> None:
         """Create the configured bucket if it does not exist."""
+        raise NotImplementedError
+
+    def check_available(self) -> None:
+        """Return if the configured bucket is reachable; raise a storage error if not."""
         raise NotImplementedError
 
     def create_presigned_url(
