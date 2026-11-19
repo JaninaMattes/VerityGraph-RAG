@@ -164,14 +164,12 @@ Do these steps to upload a document and start the ingestion:
 
    The response contains `document_id`, `url` and `required_headers`.
 
-2. Upload the file with every header from `required_headers`:
+2. Upload the file to the `url`. The tenant, filename and document type are signed
+   into the URL. Send only the headers in `required_headers` (today there are none);
+   storage rejects headers that the URL does not sign.
 
    ```sh
-   curl -X PUT --upload-file report.pdf \
-     -H "x-amz-meta-tenant-id: <value>" \
-     -H "x-amz-meta-filename: report.pdf" \
-     -H "x-amz-meta-document-type: PDF" \
-     "<url>"
+   curl -X PUT --upload-file report.pdf "<url>"
    ```
 
 3. Open the Temporal Web UI. Find the workflow `ingestion-job-<document_id>`.
