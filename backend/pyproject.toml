@@ -14,12 +14,38 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "sqlalchemy[asyncio]>=2.0.51",
     "structlog>=26.1.0",
-    "temporalio[langgraph]>=1.30.0",
+    "temporalio>=1.30.0",
     "uvicorn>=0.52.4",
 ]
 
+[project.optional-dependencies]
+# Parsing and chunking for the ingestion worker. It pulls in torch, so the API
+# image does not install it (uv sync --extra ingestion).
+ingestion = [
+    "docling>=2.150.0",
+    # Direct, so that [tool.uv.sources] applies (uv ignores it for transitive ones).
+    "torch>=2.15.0",
+    "torchvision>=0.29.2",
+]
+
+# On Linux (CI, Docker) use the CPU-only torch wheels: no CUDA libraries.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.fastapi]
 entrypoint = "src.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Run every async test and fixture with pytest-asyncio, without per-test markers.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["src"]
