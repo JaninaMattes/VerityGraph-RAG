@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f docker/compose.yaml
 BACKEND = cd backend &&
 
-.PHONY: help install dev worker up down logs lint test test-integration test-e2e check
+.PHONY: help install dev worker up down logs lint test test-integration test-e2e check create-admin
 
 help:
 	@echo "VerityGraph commands:"
@@ -15,6 +15,8 @@ help:
 	@echo "  make lint     - Ruff lint and format check"
 	@echo "  make test     - Tests with coverage"
 	@echo "  make test-integration - Tests against a real Postgres (TEST_DATABASE_URL)"
+	@echo "  make test-e2e - Upload-to-chunks test with real services in Docker"
+	@echo "  make create-admin ORG=.. ADMIN_USERNAME=.. ADMIN_EMAIL=.. - First tenant admin"
 	@echo "  make check    - lint + test (the same checks as CI)"
 
 install:
@@ -51,5 +53,11 @@ test-integration:
 # Needs Docker; starts and removes its own Postgres and MinIO containers.
 test-e2e:
 	$(BACKEND) E2E=1 uv run pytest tests/e2e -v
+
+# Create a tenant and its first admin. The password is prompted (hidden) or read
+# from VERITYGRAPH_ADMIN_PASSWORD; it is never a command-line argument.
+create-admin:
+	$(BACKEND) uv run python -m src.cli create-admin \
+		--organisation "$(ORG)" --username "$(ADMIN_USERNAME)" --email "$(ADMIN_EMAIL)"
 
 check: lint test
