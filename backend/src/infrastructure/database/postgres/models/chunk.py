@@ -25,7 +25,7 @@ from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models.mixins import CreatedAtMixin
 
 if typing.TYPE_CHECKING:
-    from .document import Document
+    from .document import Document  # noqa: TC004
 
 
 class DocumentChunk(CreatedAtMixin, Base):
@@ -47,7 +47,7 @@ class DocumentChunk(CreatedAtMixin, Base):
     )
 
     document: Mapped[Document] = relationship(back_populates="document_chunks")
-    spans: Mapped[list[DocumentChunkSpan]] = relationship(
+    spans: Mapped[list["DocumentChunkSpan"]] = relationship(
         back_populates="chunk",
         cascade="all, delete-orphan",
         passive_deletes=True,

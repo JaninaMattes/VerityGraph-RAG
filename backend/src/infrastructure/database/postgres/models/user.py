@@ -21,8 +21,7 @@ from src.infrastructure.database.postgres.models.mixins import (
 from src.libs.enums.user import UserRole, UserStatus
 
 if typing.TYPE_CHECKING:
-    from .tenant import Tenant
-
+    from .tenant import Tenant  # noqa: TC004
 
 class User(TimestampMixin, SoftDeleteMixin, Base):
     """A user of one tenant. The email address is unique within the tenant."""

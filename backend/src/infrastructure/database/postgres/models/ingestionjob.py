@@ -11,7 +11,7 @@ from src.infrastructure.database.postgres.models.mixins import TimestampMixin
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 if typing.TYPE_CHECKING:
-    from .document import Document
+    from .document import Document # noqa
 
 
 class IngestionJob(TimestampMixin, Base):
