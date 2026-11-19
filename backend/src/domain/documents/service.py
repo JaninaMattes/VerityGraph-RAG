@@ -74,11 +74,8 @@ class DocumentService:
             document_id=document_id,
             url=url,
             expires_at=UPLOAD_URL_TTL,
-            required_headers={
-                "x-amz-meta-tenant-id": str(tenant_id),
-                "x-amz-meta-filename": filename,
-                "x-amz-meta-document-type": document_type,
-            },
+            # The metadata is signed into the URL. Storage rejects unsigned headers.
+            required_headers={},
         )
 
     async def get_download_url(
@@ -95,16 +92,9 @@ class DocumentService:
             expires_at=DOWNLOAD_URL_TTL,
             method="GET",
         )
-        document_type = (
-            document.document_type.value if document.document_type else "unknown"
-        )
         return PresignedUrl(
             document_id=document_id,
             url=url,
             expires_at=DOWNLOAD_URL_TTL,
-            required_headers={
-                "x-amz-meta-tenant-id": str(document.tenant_id),
-                "x-amz-meta-filename": document.filename,
-                "x-amz-meta-document-type": document_type,
-            },
+            required_headers={},
         )
