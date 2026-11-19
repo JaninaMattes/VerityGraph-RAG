@@ -11,9 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
-from src.api.routers import document, health, tenant, user
+from src.api.routers import auth, document, health, tenant, user
 from src.infrastructure.database.postgres.engine import create_async_db_engine
 from src.infrastructure.database.postgres.session import create_session_factory
+from src.infrastructure.storage.client import create_storage_client
 from src.libs.core.config import get_settings
 from src.libs.core.logger import get_logger, setup_logging
 from src.libs.exceptions.exception_handlers import register_exception_handlers
@@ -25,9 +26,13 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Create the database engine before the first request; dispose it at shutdown."""
+    """Create the shared clients before the first request; release them at shutdown.
+
+    One MinIO client per process reuses its connection pool for every request.
+    """
     app.state.db_engine = create_async_db_engine(settings)
     app.state.session_factory = create_session_factory(app.state.db_engine)
+    app.state.storage_client = create_storage_client(settings)
     logger.info("API started", environment=settings.environment)
     yield
     await app.state.db_engine.dispose()
@@ -49,6 +54,7 @@ register_exception_handlers(app)
 
 for router, tag in (
     (health.router, "Health"),
+    (auth.router, "Authentication"),
     (tenant.router, "Tenants"),
     (user.router, "Users"),
     (document.router, "Documents"),
