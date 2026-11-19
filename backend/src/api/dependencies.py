@@ -1,15 +1,22 @@
 """FastAPI dependency providers: settings, request session, repositories and services."""
 
+import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from minio import Minio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chunks.service import ChunkService
 from src.domain.documents.service import DocumentService
 from src.domain.tenants.service import TenantService
 from src.domain.users.service import UserService
+from src.infrastructure.database.postgres.repositories.chunk import (
+    PostgresChunkRepository,
+)
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
@@ -46,6 +53,28 @@ def get_minio_provider(
     return create_storage_service(client, settings)
 
 
+type ReadinessProbe = Callable[[], Awaitable[None]]
+
+
+def get_readiness_probes(
+    request: Request,
+    storage: Annotated[MinioStorage, Depends(get_minio_provider)],
+) -> dict[str, ReadinessProbe]:
+    """Return one probe per dependency that the API needs to serve requests.
+
+    A probe returns when its dependency answers and raises when it does not.
+    """
+
+    async def database() -> None:
+        async with request.app.state.db_engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+    async def object_storage() -> None:
+        await asyncio.to_thread(storage.check_available)
+
+    return {"database": database, "storage": object_storage}
+
+
 def get_tenant_repository(session: DbSessionDep) -> PostgresTenantRepository:
     return PostgresTenantRepository(session=session)
 
@@ -56,6 +85,10 @@ def get_user_repository(session: DbSessionDep) -> PostgresUserRepository:
 
 def get_document_repository(session: DbSessionDep) -> PostgresDocumentRepository:
     return PostgresDocumentRepository(session=session)
+
+
+def get_chunk_repository(session: DbSessionDep) -> PostgresChunkRepository:
+    return PostgresChunkRepository(session=session)
 
 
 def get_document_service(
@@ -77,3 +110,14 @@ def get_user_service(
     user_repository: Annotated[PostgresUserRepository, Depends(get_user_repository)],
 ) -> UserService:
     return UserService(user_repository=user_repository)
+
+
+def get_chunk_service(
+    doc_repository: Annotated[
+        PostgresDocumentRepository, Depends(get_document_repository)
+    ],
+    chunk_repository: Annotated[PostgresChunkRepository, Depends(get_chunk_repository)],
+) -> ChunkService:
+    return ChunkService(
+        doc_repository=doc_repository, chunk_repository=chunk_repository
+    )
