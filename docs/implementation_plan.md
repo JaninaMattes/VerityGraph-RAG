@@ -28,7 +28,7 @@ multi-region deployment, Slack integration, fine-tuning models.
 
 | Area | State on `main` |
 | --- | --- |
-| Tenants, users (CRUD) | Works. No authentication. The tenant comes from `DEV_TENANT_ID` |
+| Tenants, users (CRUD) | Works. JWT bearer authentication on every endpoint except health and login |
 | Presigned upload and download (MinIO) | Works. Object keys are `tenant/namespace/yyyy/mm/document_id` |
 | MinIO → Kafka → Temporal workflow | Works. Idempotent: workflow ID `ingestion-job-<document_id>`, `ALLOW_DUPLICATE_FAILED_ONLY` |
 | Document processing | Docling parses and chunks the file. Chunks and their page/box spans are stored in Postgres |
@@ -144,7 +144,7 @@ Each phase ends with a demo, tests, and an updated evaluation result.
       (`parsed/<document_id>.json`). Start with PDF; add DOCX, PPTX and XLSX later
 - [x] Separate worker image for parsing (Docling is CPU- and memory-heavy). The API
       image stays small (Dockerfile targets `api` and `worker`)
-- [ ] Separate Temporal task queue for parsing, so heavy files do not block short
+- [x] Separate Temporal task queue for parsing, so heavy files do not block short
       activities
 - [x] Chunking in `process_document_activity`: Docling `HybridChunker` (structure- and
       token-aware) → `document_chunk` and `chunk_span` in one transaction, idempotent
