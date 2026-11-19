@@ -189,7 +189,7 @@ class TestDocumentService:
         GIVEN a filename with an extension
         WHEN an upload URL is requested
         THEN the storage signs a 15-minute PUT URL with the tenant metadata
-        AND the result lists the headers that the client must send
+        AND the client must send no extra headers (unsigned ones are rejected)
         """
         result = await DocumentService(storage, repo).create_upload_url(
             mock_tenant_id, "report.pdf", "legal"
@@ -202,7 +202,8 @@ class TestDocumentService:
         assert kwargs["method"] == "PUT"
         assert kwargs["storage_key"].document_id == result.document_id
         assert kwargs["user_metadata"]["document_type"] == "PDF"
-        assert result.required_headers["x-amz-meta-tenant-id"] == str(mock_tenant_id)
+        assert kwargs["user_metadata"]["tenant_id"] == str(mock_tenant_id)
+        assert result.required_headers == {}
 
     async def test_upload_url_without_extension_is_unknown_type(
         self, storage, repo, mock_tenant_id
@@ -212,11 +213,10 @@ class TestDocumentService:
         WHEN an upload URL is requested
         THEN the document type is 'UNKNOWN'
         """
-        result = await DocumentService(storage, repo).create_upload_url(
-            mock_tenant_id, "README"
-        )
+        await DocumentService(storage, repo).create_upload_url(mock_tenant_id, "README")
 
-        assert result.required_headers["x-amz-meta-document-type"] == "UNKNOWN"
+        kwargs = storage.create_presigned_url.call_args.kwargs
+        assert kwargs["user_metadata"]["document_type"] == "UNKNOWN"
 
     async def test_missing_bucket_is_created_and_signing_retried(
         self, storage, repo, mock_tenant_id
@@ -259,6 +259,7 @@ class TestDocumentService:
         GIVEN a stored document
         WHEN a download URL is requested
         THEN the storage signs a 5-minute GET URL for the stored key
+        AND the client must send no extra headers
         """
         repo.get_one.return_value = document_entity
 
@@ -272,22 +273,7 @@ class TestDocumentService:
             method="GET",
         )
         assert result.expires_at == timedelta(minutes=5)
-        assert result.required_headers["x-amz-meta-document-type"] == "pdf"
-
-    async def test_download_url_with_unknown_type(self, storage, repo, document_entity):
-        """
-        GIVEN a stored document without a document type
-        WHEN a download URL is requested
-        THEN the document type header is 'unknown'
-        """
-        document_entity.document_type = None
-        repo.get_one.return_value = document_entity
-
-        result = await DocumentService(storage, repo).get_download_url(
-            document_entity.document_id, document_entity.tenant_id
-        )
-
-        assert result.required_headers["x-amz-meta-document-type"] == "unknown"
+        assert result.required_headers == {}
 
     async def test_download_of_missing_document_raises_not_found(
         self, storage, repo, mock_document_id, mock_tenant_id
