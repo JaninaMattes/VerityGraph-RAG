@@ -30,6 +30,7 @@ from src.infrastructure.database.postgres.repositories.tenant import (
 from src.infrastructure.database.postgres.repositories.user import (
     PostgresUserRepository,
 )
+from src.libs.enums.credentials import CredentialStatus
 from src.libs.exceptions.exceptions import (
     ConflictException,
     DatabaseException,
@@ -38,8 +39,6 @@ from src.libs.exceptions.exceptions import (
     TenantNotFoundException,
     UserNotFoundException,
 )
-
-pytestmark = pytest.mark.asyncio
 
 DB_ERROR = OperationalError("SELECT 1", {}, Exception("connection lost"))
 CONFLICT = IntegrityError("INSERT", {}, Exception("duplicate key"))
@@ -273,9 +272,105 @@ class TestUnknownKeys:
             await PostgresTenantRepository(mock_db_session).get_one(tenant_id)
 
 
+class TestTenantLookup:
+    """find_by_organisation() returns the tenant with that name, or None."""
+
+    async def test_existing_organisation_is_returned(
+        self, tenant_entity, mock_db_session
+    ):
+        """
+        GIVEN a tenant with the organisation name
+        WHEN it is looked up by that name
+        THEN the tenant entity is returned
+        """
+        model = TenantMapper.to_model(tenant_entity)
+        mock_db_session.execute.return_value = result_with(model)
+
+        found = await PostgresTenantRepository(mock_db_session).find_by_organisation(
+            tenant_entity.organisation
+        )
+
+        assert found == tenant_entity
+
+    async def test_unknown_organisation_returns_none(self, mock_db_session):
+        """
+        GIVEN no tenant with the organisation name
+        WHEN it is looked up
+        THEN None is returned, not an error
+        """
+        mock_db_session.execute.return_value = result_with(None)
+
+        found = await PostgresTenantRepository(mock_db_session).find_by_organisation(
+            "ACME"
+        )
+
+        assert found is None
+
+    async def test_database_error_is_translated(self, mock_db_session):
+        """
+        GIVEN the database fails
+        WHEN a tenant is looked up
+        THEN DatabaseException is raised
+        """
+        mock_db_session.execute.side_effect = OperationalError(
+            "SELECT", {}, Exception()
+        )
+
+        with pytest.raises(DatabaseException):
+            await PostgresTenantRepository(mock_db_session).find_by_organisation("ACME")
+
+
 @pytest.fixture
 def mock_db_session() -> AsyncMock:
     """Override: a plain session mock with a synchronous add()."""
     session = AsyncMock()
     session.add = MagicMock()
     return session
+
+
+class TestUserCredentials:
+    """The user repository stores and finds the local password of a user."""
+
+    async def test_create_with_password_hash_adds_local_credential(
+        self, user_entity, mock_db_session
+    ):
+        """
+        GIVEN a new user and the hash of its password
+        WHEN the user is created
+        THEN the stored user has one valid 'local' credential with that hash
+        """
+        await PostgresUserRepository(mock_db_session).create(user_entity, "hash")
+
+        (model,) = mock_db_session.add.call_args.args
+        (credential,) = model.credentials
+        assert (credential.provider, credential.password_hash) == ("local", "hash")
+        assert credential.status is CredentialStatus.VALID
+
+    async def test_create_without_password_hash_adds_no_credential(
+        self, user_entity, mock_db_session
+    ):
+        """
+        GIVEN a new user without a password (for example a future SSO user)
+        WHEN the user is created
+        THEN no credential is stored
+        """
+        await PostgresUserRepository(mock_db_session).create(user_entity)
+
+        (model,) = mock_db_session.add.call_args.args
+        assert model.credentials == []
+
+    async def test_find_login_candidates_maps_rows(self, user_entity, mock_db_session):
+        """
+        GIVEN the query returns one user row with its hash
+        WHEN the login candidates are read
+        THEN the result is the user entity with that hash
+        """
+        result = MagicMock()
+        result.all.return_value = [(UserMapper.to_model(user_entity), "hash")]
+        mock_db_session.execute.return_value = result
+
+        candidates = await PostgresUserRepository(
+            mock_db_session
+        ).find_login_candidates(user_entity.email)
+
+        assert candidates == [(user_entity, "hash")]

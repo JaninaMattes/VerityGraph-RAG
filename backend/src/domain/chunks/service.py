@@ -17,12 +17,16 @@ class ChunkService:
         self.chunk_repository = chunk_repository
 
     async def list_for_document(
-        self, document_id: UUID, tenant_id: UUID
+        self, document_id: UUID, tenant_id: UUID, limit: int = 100, offset: int = 0
     ) -> list[Chunk]:
-        """Return the chunks of a document of the tenant, in order.
+        """Return up to `limit` chunks of a document of the tenant, in order.
+
+        Skip the first `offset` chunks, so a client can read a long document in pages.
 
         Raise DocumentNotFoundException if the tenant has no such document, so an
         unknown id and a foreign id give the same answer.
         """
         await self.doc_repository.get_one(document_id, tenant_id)
-        return await self.chunk_repository.list_for_document(document_id, tenant_id)
+        return await self.chunk_repository.list_for_document(
+            document_id, tenant_id, limit=limit, offset=offset
+        )

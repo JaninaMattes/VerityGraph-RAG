@@ -60,7 +60,6 @@ jobs:
       - name: Create .env file for CI
         run: |
           cat << 'EOF' > .env
-          DEV_TENANT_ID=12bf3456-7d89-12d3-a456-78c91cf2b34f
           ENVIRONMENT=testing
           SECRET_KEY=ci-test-secret-key-12345678901234567890123456789012
           POSTGRES_URL=postgresql+asyncpg://test:test@localhost:5432/test_db

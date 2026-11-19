@@ -10,8 +10,6 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 
-pytestmark = pytest.mark.asyncio
-
 TENANT_ID = "12bf3456-7d89-12d3-a456-78c91cf2b34f"
 DOCUMENT_ID = "39b02a26-86d0-4dd6-ae6e-7a0ea578f290"
 OBJECT_KEY = f"{TENANT_ID}/files/2026/01/{DOCUMENT_ID}.pdf"
@@ -23,12 +21,17 @@ def make_record(
     metadata: dict[str, str] | None = None,
     **object_fields: Any,
 ) -> dict[str, Any]:
-    """Build a MinIO S3 event record with sensible defaults."""
+    """Build an S3 event record in the shape MinIO sends.
+
+    MinIO reports the user metadata with the keys as they were signed into the
+    upload URL: 'x-amz-meta-<name>' with underscores.
+    """
     if metadata is None:
         metadata = {
-            "tenant-id": TENANT_ID,
-            "filename": "report.pdf",
-            "document-type": "pdf",
+            "content-type": "application/pdf",
+            "x-amz-meta-tenant_id": TENANT_ID,
+            "x-amz-meta-filename": "report.pdf",
+            "x-amz-meta-document_type": "pdf",
         }
     return {
         "eventName": "s3:ObjectCreated:Put",
@@ -81,10 +84,8 @@ class TestStartsIngestionWorkflow:
         }
         assert kwargs["id"] == f"ingestion-job-{DOCUMENT_ID}"
         assert kwargs["task_queue"] == "test-queue"
-        assert (
-            kwargs["id_reuse_policy"]
-            == WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
-        )
+        # One object key starts one workflow ever, even after a failed run.
+        assert kwargs["id_reuse_policy"] == WorkflowIDReusePolicy.REJECT_DUPLICATE
 
     async def test_document_id_excludes_file_extension(
         self, handler: MinioObjectCreatedHandler, temporal_client: AsyncMock
@@ -139,7 +140,7 @@ class TestStartsIngestionWorkflow:
         WHEN the handler handles the record
         THEN the payload uses the documented defaults
         """
-        await handler.handle(make_record(metadata={"tenant-id": TENANT_ID}))
+        await handler.handle(make_record(metadata={"x-amz-meta-tenant_id": TENANT_ID}))
 
         payload = temporal_client.start_workflow.call_args.args[1]
         assert payload["size_bytes"] == -1
@@ -147,6 +148,27 @@ class TestStartsIngestionWorkflow:
         assert payload["mime_type"] == "application/octet-stream"
         assert payload["filename"] == ""
         assert payload["document_type"] == "PDF"
+
+    @pytest.mark.parametrize(
+        "tenant_key",
+        ["x-amz-meta-tenant_id", "X-Amz-Meta-Tenant-Id", "tenant-id", "tenant_id"],
+    )
+    async def test_metadata_keys_are_read_in_any_spelling(
+        self,
+        handler: MinioObjectCreatedHandler,
+        temporal_client: AsyncMock,
+        tenant_key: str,
+    ):
+        """
+        GIVEN a record whose tenant id key has or lacks the 'x-amz-meta-' prefix,
+            in any case, with '_' or '-'
+        WHEN the handler handles the record
+        THEN it reads the tenant id and starts the workflow
+        """
+        await handler.handle(make_record(metadata={tenant_key: TENANT_ID}))
+
+        payload = temporal_client.start_workflow.call_args.args[1]
+        assert payload["tenant_id"] == TENANT_ID
 
 
 class TestSkipsMalformedRecords:
@@ -158,6 +180,14 @@ class TestSkipsMalformedRecords:
             (make_record(bucket=""), "missing bucket"),
             (make_record(key=""), "missing object key"),
             (make_record(metadata={}), "missing tenant id"),
+            (
+                make_record(metadata={"x-amz-meta-tenant_id": str(uuid.uuid4())}),
+                "tenant id differs from key prefix",
+            ),
+            (
+                make_record(key=f"not-a-uuid/files/2026/01/{DOCUMENT_ID}.pdf"),
+                "key prefix is not a tenant id",
+            ),
             (make_record(key="tenant/files/2026/01/not-a-uuid.pdf"), "invalid id"),
             ({"eventName": "s3:ObjectCreated:Put"}, "missing s3 section"),
         ],

@@ -11,8 +11,6 @@ from aiokafka import TopicPartition
 
 from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
 
-pytestmark = pytest.mark.asyncio
-
 PUT = "s3:ObjectCreated:Put"
 TP0 = TopicPartition("minio-events", 0)
 TP1 = TopicPartition("minio-events", 1)

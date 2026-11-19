@@ -10,8 +10,8 @@ classified for Temporal's retry policy:
 
 import asyncio
 import tempfile
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -22,7 +22,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from src.domain.chunks.chunker import DocumentChunker
-from src.domain.chunks.entities import build_chunks
+from src.domain.chunks.entities import ChunkDraft, build_chunks
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.storage import StorageProvider
@@ -81,6 +81,29 @@ def parse_enum[E: Enum](enum_cls: type[E], name: str) -> E:
         raise ValueError(f"'{name}' is not a valid {enum_cls.__name__}.") from None
 
 
+@asynccontextmanager
+async def _heartbeats(interval_seconds: float) -> AsyncIterator[None]:
+    """Send an activity heartbeat every `interval_seconds` while the block runs.
+
+    Download and parsing run in threads that cannot heartbeat, so a task on the
+    event loop does it. Without heartbeats Temporal finds a dead worker only when
+    the start-to-close timeout ends.
+    """
+
+    async def beat() -> None:
+        while True:
+            activity.heartbeat()
+            await asyncio.sleep(interval_seconds)
+
+    task = asyncio.create_task(beat())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 @contextmanager
 def _activity_errors(action: str) -> Iterator[None]:
     """Translate errors raised while doing `action` to classified ApplicationErrors."""
@@ -107,10 +130,15 @@ class IngestFileActivities:
         session_factory: async_sessionmaker[AsyncSession],
         storage: StorageProvider,
         chunker: DocumentChunker,
+        *,
+        max_file_bytes: int,
+        heartbeat_seconds: float = 20,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
         self._chunker = chunker
+        self._max_file_bytes = max_file_bytes
+        self._heartbeat_seconds = heartbeat_seconds
 
     @activity.defn(name="create_document_activity")
     async def create_document_activity(self, payload: CreateDocumentPayload) -> None:
@@ -207,24 +235,22 @@ class IngestFileActivities:
     ) -> ProcessDocumentResult:
         """Download the document, chunk it and store the chunks in one transaction.
 
-        The local file name comes from the server-generated object key, never from the
-        client filename, so a name like '../../x' cannot escape the directory.
         The chunks replace earlier chunks of the document, so a retry is safe.
-        Missing objects, missing files, denied access and unreadable files are
-        non-retryable; database and network faults are retryable.
+        A file larger than `max_file_bytes` (as the upload event reports) fails
+        before the download. Missing objects, missing files, denied access, too
+        large and unreadable files are non-retryable; database and network faults
+        are retryable. Heartbeats are sent during download and parsing.
         """
         activity.logger.info("Processing document %s.", payload.document_id)
         document_id, tenant_id = UUID(payload.document_id), UUID(payload.tenant_id)
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                local_path = Path(temp_dir) / PurePosixPath(payload.object_key).name
-                await asyncio.to_thread(
-                    self._storage.download_object,
-                    payload.bucket,
-                    payload.object_key,
-                    str(local_path),
+            if payload.size_bytes > self._max_file_bytes:
+                raise DocumentParsingException(
+                    f"The file has {payload.size_bytes} bytes; "
+                    f"the limit is {self._max_file_bytes}."
                 )
-                drafts = await asyncio.to_thread(self._chunker.chunk, local_path)
+            async with _heartbeats(self._heartbeat_seconds):
+                drafts = await self._download_and_chunk(payload)
             config = self._chunker.config
             chunks = build_chunks(
                 drafts, document_id=document_id, tenant_id=tenant_id, config=config
@@ -254,3 +280,21 @@ class IngestFileActivities:
                 non_retryable=permanent,
                 type="ProcessingFailure",
             ) from exc
+
+    async def _download_and_chunk(
+        self, payload: ProcessDocumentPayload
+    ) -> list[ChunkDraft]:
+        """Download the object to a temporary directory and chunk it there.
+
+        The local file name comes from the server-generated object key, never from
+        the client filename, so a name like '../../x' cannot escape the directory.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_path = Path(temp_dir) / PurePosixPath(payload.object_key).name
+            await asyncio.to_thread(
+                self._storage.download_object,
+                payload.bucket,
+                payload.object_key,
+                str(local_path),
+            )
+            return await asyncio.to_thread(self._chunker.chunk, local_path)

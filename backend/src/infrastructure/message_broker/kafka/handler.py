@@ -1,6 +1,7 @@
 """Handler that turns a MinIO 'ObjectCreated' event into an ingestion workflow."""
 
 import urllib.parse
+import uuid
 from typing import Any
 
 from temporalio.client import Client
@@ -14,12 +15,27 @@ from src.libs.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+METADATA_PREFIX = "x-amz-meta-"
+
+
+def user_metadata(s3_object: dict[str, Any]) -> dict[str, str]:
+    """Return the object's user metadata with plain keys.
+
+    MinIO reports the keys as signed into the upload URL ('x-amz-meta-tenant_id');
+    this returns them as 'tenant-id', so either spelling is accepted.
+    """
+    return {
+        key.lower().removeprefix(METADATA_PREFIX).replace("_", "-"): value
+        for key, value in (s3_object.get("userMetadata") or {}).items()
+    }
+
 
 class MinioObjectCreatedHandler(EventHandler):
     """Thin handler: Kafka is the trigger, Temporal owns the transaction.
 
     One upload starts one workflow with the id 'ingestion-job-<document_id>', so a
-    duplicate event does not start a second run.
+    duplicate event does not start a second run, also not after a failed run (the
+    workflow retries transient errors itself; a client re-uploads a failed file).
     """
 
     def __init__(
@@ -31,24 +47,35 @@ class MinioObjectCreatedHandler(EventHandler):
     async def handle(self, record: dict[str, Any]) -> None:
         """Start the ingestion workflow for one S3 event record.
 
-        A record without bucket, key or tenant id, or with a key that holds no document
-        id, is logged and skipped. A duplicate workflow is ignored. Any other error
-        (for example Temporal is unreachable) propagates, so the consumer retries.
+        A record without bucket, key or tenant id, with a key that holds no tenant or
+        document id, or whose tenant id is not the key's tenant prefix (the upload
+        did not come from this tenant's presigned URL), is logged and skipped. A
+        duplicate workflow is ignored. Any other error (for example Temporal is
+        unreachable) propagates, so the consumer retries.
         """
         s3 = record.get("s3", {})
         bucket = s3.get("bucket", {}).get("name", "")
         s3_object = s3.get("object", {})
         object_key = urllib.parse.unquote(s3_object.get("key", ""))
-        metadata = s3_object.get("userMetadata", {})
+        metadata = user_metadata(s3_object)
         tenant_id = metadata.get("tenant-id")
 
         if not bucket or not object_key or not tenant_id:
             logger.error("Skipping S3 record without bucket, object key or tenant id.")
             return
         try:
-            document_id = StorageKey(object_key).document_id
+            key = StorageKey(object_key)
+            document_id, key_tenant_id = key.document_id, key.tenant_id
+            owner_matches = key_tenant_id == uuid.UUID(tenant_id)
         except ValueError:
-            logger.error("Skipping S3 record: key %s holds no document id.", object_key)
+            logger.error("Skipping S3 record: key %s holds no valid ids.", object_key)
+            return
+        if not owner_matches:
+            logger.error(
+                "Skipping S3 record: tenant %s does not own key %s.",
+                tenant_id,
+                object_key,
+            )
             return
 
         payload = IngestionPayload(
@@ -69,7 +96,7 @@ class MinioObjectCreatedHandler(EventHandler):
                 payload.model_dump(mode="json"),
                 id=workflow_id,
                 task_queue=self.temporal_task_queue,
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
             )
             logger.info("Started workflow %s.", workflow_id)
         except WorkflowAlreadyStartedError:

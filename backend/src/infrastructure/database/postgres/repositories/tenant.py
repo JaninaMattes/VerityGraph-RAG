@@ -6,7 +6,10 @@ from src.domain.tenants.entities import TenantEntity
 from src.domain.tenants.repository import TenantRepository
 from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
 from src.infrastructure.database.postgres.models.tenant import Tenant
-from src.infrastructure.database.postgres.repositories.base import PostgresRepository
+from src.infrastructure.database.postgres.repositories.base import (
+    PostgresRepository,
+    translate_db_errors,
+)
 from src.libs.exceptions.exceptions import TenantNotFoundException
 
 
@@ -32,3 +35,10 @@ class PostgresTenantRepository(PostgresRepository, TenantRepository):
             TenantNotFoundException(tenant_id),
         )
         return TenantMapper.to_entity(row)
+
+    async def find_by_organisation(self, organisation: str) -> TenantEntity | None:
+        """Return a tenant with this exact organisation name, or None."""
+        statement = select(Tenant).where(Tenant.organisation == organisation).limit(1)
+        with translate_db_errors("find a tenant by organisation"):
+            row = (await self._session.execute(statement)).scalar_one_or_none()
+        return TenantMapper.to_entity(row) if row else None

@@ -1,8 +1,11 @@
 """User use cases. Every operation is scoped to one tenant."""
 
+import asyncio
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from src.domain.auth.hasher import PasswordHasher
 from src.domain.users.dataclasses import UpdateUser, User
 from src.domain.users.entities import UserEntity
 from src.domain.users.repository import UserRepository
@@ -15,23 +18,33 @@ class UserService:
     Repository errors (NotFoundException, DatabaseException) propagate unchanged.
     """
 
-    def __init__(self, user_repository: UserRepository) -> None:
+    def __init__(self, user_repository: UserRepository, hasher: PasswordHasher) -> None:
         self.user_repository = user_repository
+        self.hasher = hasher
 
-    async def create(self, user: User, tenant_id: uuid.UUID) -> UserEntity:
-        """Store a new user with role USER and status CREATED and return it."""
+    async def create(
+        self,
+        user: User,
+        tenant_id: uuid.UUID,
+        roles: Iterable[UserRole] = (UserRole.USER,),
+    ) -> UserEntity:
+        """Store a new user with status CREATED and the password's hash; return it.
+
+        Hashing runs in a thread because Argon2 blocks for tens of milliseconds.
+        """
         now = datetime.now(UTC)
         entity = UserEntity(
             user_id=uuid.uuid4(),
             tenant_id=tenant_id,
             username=user.username,
             email=user.email,
-            roles=[UserRole.USER],
+            roles=list(roles),
             status=UserStatus.CREATED,
             created_at=now,
             updated_at=now,
         )
-        return await self.user_repository.create(entity)
+        password_hash = await asyncio.to_thread(self.hasher.hash, user.password)
+        return await self.user_repository.create(entity, password_hash)
 
     async def get(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> UserEntity:
         """Return the user. Raise UserNotFoundException if the tenant has no such user."""

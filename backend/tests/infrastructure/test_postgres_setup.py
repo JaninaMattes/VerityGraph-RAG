@@ -66,7 +66,6 @@ def request_with(session: AsyncMock) -> SimpleNamespace:
     )
 
 
-@pytest.mark.asyncio
 class TestRequestSession:
     """get_db_session is the unit of work of one HTTP request."""
 

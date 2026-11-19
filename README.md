@@ -48,7 +48,7 @@ text snippet.
 
 | Area | Status |
 | --- | --- |
-| Tenants and users (CRUD API) | Works. The tenant comes from `DEV_TENANT_ID` until authentication exists |
+| Tenants and users (CRUD API) | Works. Every endpoint except health and login needs a bearer token (JWT) |
 | Presigned upload and download URLs (MinIO) | Works |
 | Upload event → Kafka → Temporal ingestion workflow | Works. It records the document and an ingestion job |
 | Parsing and chunking (Docling) | Works. Chunks and their evidence spans (page, box, character range) are stored in PostgreSQL; `GET /api/v1/documents/{id}/chunks` returns them |
@@ -83,7 +83,11 @@ Design decisions:
 - **Temporal owns the long-running work.** Each step is an activity with its own retry
   policy. Data errors are not retried; database and network faults are.
 - **At-least-once delivery.** The Kafka consumer commits an offset only after the workflow
-  has started. The deterministic workflow ID makes duplicate events harmless.
+  has started. The deterministic workflow ID makes duplicate events harmless: one
+  upload starts one workflow, also after a failed run.
+- **Fail fast, not slow.** The parse activity sends a heartbeat every 20 s, so a crashed
+  worker is detected in about 2 minutes. Login is rate-limited and request bodies are
+  limited to 1 MiB.
 - **Ports and adapters.** The domain defines `Protocol`s for storage, chunking and
   repositories, and the infrastructure layer implements them. Tests replace them with mocks.
 - **PostgreSQL is the source of truth.** Chunk IDs are deterministic, so a retry writes the
@@ -121,8 +125,11 @@ Planned: [Qdrant](https://qdrant.tech/),
    cp backend/.env.example backend/.env
    ```
 
-3. Replace every `<YOUR-PASSWORD>` and `<YOUR-CLUSTER-ID>` value.
+3. Replace every `<YOUR-PASSWORD>`, `<YOUR-CLUSTER-ID>` and `<YOUR-SECRET-KEY>` value.
    - Make the MinIO and Postgres credentials in `backend/.env` the same as in `docker/.env`.
+   - Set `SECRET_KEY` to at least 32 random characters. The API does not start with
+     a shorter key. Generate one with
+     `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
    - Generate a Kafka cluster ID with
      `docker run --rm confluentinc/cp-kafka:8.3.1 kafka-storage random-uuid`.
 4. Install the backend dependencies:
@@ -136,6 +143,22 @@ Planned: [Qdrant](https://qdrant.tech/),
    ```sh
    make up
    ```
+
+6. Create a tenant and its first admin user. The command prompts for the password
+   (at least 12 characters). It never takes the password as an argument.
+
+   ```sh
+   make create-admin ORG="ACME" ADMIN_USERNAME=admin ADMIN_EMAIL=admin@acme.example
+   ```
+
+   Inside the stack, run
+   `docker compose -f docker/compose.yaml run --rm web-api python -m src.cli create-admin --organisation ACME --username admin --email admin@acme.example`.
+   A second run with the same organisation changes nothing.
+
+   For local development, `make seed-demo` creates the tenant "Demo Organisation"
+   with `demo-admin@example.com` (admin) and `demo-member@example.com` (member). It
+   prints a new random password for each, only once. It refuses
+   `ENVIRONMENT=production`.
 
 ### Services
 
@@ -152,49 +175,74 @@ Planned: [Qdrant](https://qdrant.tech/),
 
 ## Usage
 
-Do these steps to upload a document and start the ingestion:
+Every endpoint except health and login needs a bearer token. Do these steps to log
+in, upload a document and start the ingestion:
 
-1. Request an upload URL:
+1. Log in with the email and password of a user (OAuth2 password flow). The token
+   is valid for `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30). In the OpenAPI docs, use
+   **Authorize** instead.
+
+   ```sh
+   TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/token \
+     -d "username=admin@acme.example" --data-urlencode "password=<password>" \
+     | python -c "import json, sys; print(json.load(sys.stdin)['access_token'])")
+   ```
+
+   A wrong email or password returns 401 without saying which one was wrong. More
+   than `LOGIN_ATTEMPTS_PER_MINUTE` (10) attempts from one address in a minute return
+   429 with `Retry-After`. Each API process counts separately; behind a proxy, run
+   uvicorn with `--proxy-headers`, or all clients share the proxy's address.
+
+2. Request an upload URL:
 
    ```sh
    curl -s -X POST http://localhost:8000/api/v1/documents \
+     -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"filename": "report.pdf", "namespace": "filings"}'
    ```
 
    The response contains `document_id`, `url` and `required_headers`.
 
-2. Upload the file with every header from `required_headers`:
+3. Upload the file to the `url`. The tenant, filename and document type are signed
+   into the URL. Send only the headers in `required_headers` (today there are none);
+   storage rejects headers that the URL does not sign.
 
    ```sh
-   curl -X PUT --upload-file report.pdf \
-     -H "x-amz-meta-tenant-id: <value>" \
-     -H "x-amz-meta-filename: report.pdf" \
-     -H "x-amz-meta-document-type: PDF" \
-     "<url>"
+   curl -X PUT --upload-file report.pdf "<url>"
    ```
 
-3. Open the Temporal Web UI. Find the workflow `ingestion-job-<document_id>`.
+4. Open the Temporal Web UI. Find the workflow `ingestion-job-<document_id>`.
 
    <img src="docs/images/temporal-web-ui.png" alt="Temporal Web UI" width="100%">
 
-4. Read the chunks with their evidence (page, box and character range per span):
+5. Read the chunks with their evidence (page, box and character range per span):
 
    ```sh
-   curl -s http://localhost:8000/api/v1/documents/<document_id>/chunks
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8000/api/v1/documents/<document_id>/chunks
    ```
 
+   The response is one page of at most `limit` chunks (default 100, at most 500).
+   Add `?limit=100&offset=100` for the next page; a shorter page is the last one.
    The first file takes longer: the worker downloads the Docling layout models and the
-   tokenizer into the `model-cache` volume.
+   tokenizer into the `model-cache` volume. The worker refuses files larger than
+   `MAX_UPLOAD_BYTES` (50 MB) or longer than `MAX_DOCUMENT_PAGES` (500); the document
+   is then `FAILED`.
 
-5. Request a download URL:
+6. Request a download URL:
 
    ```sh
-   curl -s http://localhost:8000/api/v1/documents/<document_id>
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8000/api/v1/documents/<document_id>
    ```
 
 Other endpoints: `POST/GET/PATCH/DELETE /api/v1/tenants/{tenant_id}`,
 `/api/v1/users/{user_id}` and `GET /api/v1/info`. The OpenAPI docs list all of them.
+Creating, changing or deleting a tenant, and creating or deleting a user, need the
+`admin` role. A user can change its own name and email. A missing or invalid token
+returns 401; a missing role returns 403. A request body larger than
+`MAX_REQUEST_BODY_BYTES` (1 MiB) returns 413.
 
 ## Development
 
@@ -205,6 +253,7 @@ Other endpoints: `POST/GET/PATCH/DELETE /api/v1/tenants/{tenant_id}`,
 | Lint and format check | `make lint` |
 | Tests with coverage (CI fails below 95%) | `make test` |
 | Tests against a real PostgreSQL (needs `TEST_DATABASE_URL`) | `make test-integration` |
+| Upload-to-chunks test with real services in Docker | `make test-e2e` |
 | Lint and tests, the same as CI | `make check` |
 | Apply database migrations | `cd backend && uv run alembic upgrade head` |
 
@@ -217,6 +266,11 @@ time-skipping test server on the first run. The integration tests in
 (CI starts one). They migrate it, then check the SQL, the constraints and the cascades.
 Add `DOCLING_INTEGRATION=1` to also run real Docling on a generated PDF.
 
+`make test-e2e` needs Docker. It starts its own Postgres and MinIO containers on free
+ports, uploads a PDF with a presigned URL, passes MinIO's real upload event to the
+event handler and runs the ingestion workflow with real Docling. It then reads the
+chunks back and removes the containers.
+
 `make install` includes the `ingestion` extra (Docling and torch, several GB). The API
 image does not need it: the Dockerfile has a small `api` target and a `worker` target.
 
@@ -224,15 +278,17 @@ image does not need it: the Dockerfile has a small `api` target and a `worker` t
 
 ```text
 backend/src/
-├── api/              # FastAPI routers and dependency providers
+├── api/              # FastAPI routers and dependency providers (authentication)
 ├── domain/           # Entities, value objects, services, ports (no framework imports)
 ├── infrastructure/
 │   ├── database/postgres/   # ORM models (provenance model), mappers, repositories
 │   ├── parsing/             # Docling adapter for the chunker port
+│   ├── security/            # Argon2 password hasher and JWT access tokens
 │   ├── storage/minio/       # MinIO adapter for the storage port
 │   ├── message_broker/kafka # Event handler, consumer loop, worker entry point
 │   └── workflow_execution/temporalio/  # Ingestion workflow and activities
-└── libs/             # Settings, logging, enums, schemas, exceptions
+├── libs/             # Settings, logging, enums, schemas, exceptions
+└── cli.py            # Admin commands: python -m src.cli create-admin | seed-demo
 backend/tests/        # Mirrors src/; integration/ runs against a real PostgreSQL
 docker/               # Compose stack and init scripts
 frontend/             # Vite + React scaffold
@@ -242,12 +298,13 @@ docs/                 # Documentation and images
 ## Roadmap
 
 1. **Ingestion:** parse documents with Docling, chunk them, and store the chunks with
-   their provenance. *(Done; next: a separate task queue for parsing.)*
+   their provenance. *(Done. Parsing runs on its own Temporal task queue.)*
 2. **Retrieval:** embeddings and vector search in Qdrant.
 3. **GraphRAG:** entity and relationship extraction into Neo4j.
 4. **Agentic querying:** a LangGraph agent with MCP tools.
 5. **Evaluation and observability:** RAGAS, OpenTelemetry tracing.
-6. **Production:** authentication (JWT), tenant isolation in every store, deployment.
+6. **Production:** tenant isolation in every store, deployment. *(Authentication
+   with JWT is done.)*
 
 ## License
 

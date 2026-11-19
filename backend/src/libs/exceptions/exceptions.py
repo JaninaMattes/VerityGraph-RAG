@@ -1,6 +1,9 @@
 """Application exception hierarchy.
 
 ApplicationException
+├── AuthenticationException      no, invalid or expired credentials
+├── PermissionDeniedException    the caller lacks the role for the operation
+├── TooManyRequestsException     the caller exceeded a rate limit
 ├── NotFoundException            the resource does not exist (or belongs to another tenant)
 ├── ConflictException            the write conflicts with existing data (duplicate key)
 ├── DatabaseException            the database failed; a retry may succeed
@@ -56,6 +59,22 @@ class ObjectNotFoundException(NotFoundException):
     """A storage object does not exist. The identifier is '<bucket>/<key>'."""
 
     resource = "Object"
+
+
+class AuthenticationException(ApplicationException):
+    """The caller has no valid credentials: no token, a bad token or a bad password."""
+
+
+class PermissionDeniedException(ApplicationException):
+    """The caller is authenticated but lacks the role for the operation."""
+
+
+class TooManyRequestsException(ApplicationException):
+    """The caller sent too many requests. It may retry after `retry_after` seconds."""
+
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(f"Too many requests. Retry after {retry_after} s.")
+        self.retry_after = retry_after
 
 
 class ConflictException(ApplicationException):

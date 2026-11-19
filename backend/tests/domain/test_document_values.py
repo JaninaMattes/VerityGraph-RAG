@@ -109,6 +109,30 @@ class TestStorageKeyDocumentId:
             _ = StorageKey("tenant/files/2026/01/not-a-uuid.pdf").document_id
 
 
+class TestStorageKeyTenantId:
+    """StorageKey.tenant_id reads the tenant from the first key segment."""
+
+    def test_tenant_id_round_trips(self):
+        """
+        GIVEN a key built by StorageKey.document
+        WHEN the tenant id is read from the key
+        THEN it equals the original tenant id
+        """
+        assert StorageKey(build_key()).tenant_id == TENANT_ID
+
+    @pytest.mark.parametrize(
+        "key", ["not-a-uuid/files/2026/01/x.pdf", ""], ids=["not-uuid", "empty"]
+    )
+    def test_invalid_first_segment_raises_value_error(self, key: str):
+        """
+        GIVEN a key whose first segment is not a UUID
+        WHEN the tenant id is read
+        THEN a ValueError is raised
+        """
+        with pytest.raises(ValueError):
+            _ = StorageKey(key).tenant_id
+
+
 class TestDocumentChecksum:
     """DocumentChecksum normalises and computes SHA-256 checksums."""
 

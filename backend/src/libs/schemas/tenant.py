@@ -3,14 +3,15 @@
 from pydantic import BaseModel, ConfigDict
 
 from src.libs.enums.tenant import TenantStatus
+from src.libs.schemas.base import RequestModel
 from src.libs.types import NonEmptyStr
 
 
-class UpdateTenantRequest(BaseModel):
+class UpdateTenantRequest(RequestModel):
     organisation: NonEmptyStr
 
 
-class CreateTenantRequest(BaseModel):
+class CreateTenantRequest(RequestModel):
     organisation: NonEmptyStr
 
 
