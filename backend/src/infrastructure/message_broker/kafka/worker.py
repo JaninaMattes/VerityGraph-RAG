@@ -21,6 +21,7 @@ from src.infrastructure.database.postgres.engine import create_async_db_engine
 from src.infrastructure.database.postgres.session import create_session_factory
 from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
+from src.infrastructure.parsing.docling import create_docling_chunker
 from src.infrastructure.storage.client import create_storage_client
 from src.infrastructure.storage.service import create_storage_service
 from src.infrastructure.workflow_execution.temporalio.activities import (
@@ -30,9 +31,9 @@ from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
 )
 from src.libs.core.config import Settings, get_settings
-from src.libs.core.logger import get_logger
+from src.libs.core.logger import get_logger, setup_logging
 
-logger = get_logger("kafka.run_worker")
+logger = get_logger(__name__)
 
 EVENT_TYPES = ("s3:ObjectCreated:Put", "s3:ObjectCreated:CompleteMultipartUpload")
 
@@ -83,12 +84,20 @@ async def run_until_stopped(
 async def main() -> None:
     """Wire the infrastructure and run until a stop signal or a consumer failure."""
     settings = get_settings()
+    setup_logging(settings.log_level, json_logs=settings.log_json)
     async with AsyncExitStack() as stack:
         db_engine = create_async_db_engine(settings)
         stack.push_async_callback(db_engine.dispose)
 
         storage = create_storage_service(create_storage_client(settings), settings)
-        activities = IngestFileActivities(create_session_factory(db_engine), storage)
+        chunker = create_docling_chunker(
+            tokenizer_model=settings.chunk_tokenizer_model,
+            max_tokens=settings.chunk_max_tokens,
+            do_ocr=settings.docling_do_ocr,
+        )
+        activities = IngestFileActivities(
+            create_session_factory(db_engine), storage, chunker
+        )
         temporal_client = await Client.connect(
             settings.temporal_url,
             namespace=settings.temporal_default_namespace,
