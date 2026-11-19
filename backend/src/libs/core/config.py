@@ -33,12 +33,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug: bool = False
     api_prefix: str = "/api/v1"
+    # File bytes go directly to MinIO, so API request bodies are small JSON or forms.
+    max_request_body_bytes: int = Field(default=1024 * 1024, gt=0)
 
     # Signs the access tokens. HS256 needs at least 32 bytes of key (RFC 7518).
     secret_key: SecretStr = Field(min_length=32)
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     reset_token_expire_minutes: int = Field(default=60, gt=0)
+    # Each login runs Argon2 (64 MiB, about 50 ms CPU), so limit it per client.
+    login_attempts_per_minute: int = Field(default=10, gt=0)
 
     # ---------------------------------------------------------
     # Database (e.g. PostgreSQL)
