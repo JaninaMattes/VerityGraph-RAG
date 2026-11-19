@@ -38,6 +38,10 @@ def processing_task_queue(task_queue: str) -> str:
     return f"{task_queue}-processing"
 
 
+# The parse activity heartbeats every 20 s. If no heartbeat arrives for this long,
+# the worker is dead and Temporal retries the activity on another worker.
+PROCESSING_HEARTBEAT_TIMEOUT = timedelta(minutes=2)
+
 PROCESSING_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(minutes=1), maximum_attempts=5, backoff_coefficient=2.0
 )
@@ -110,6 +114,7 @@ class DocumentIngestionWorkflow:
                 # No schedule-to-close deadline: in a backlog the activity waits in
                 # its queue instead of failing; each attempt is still limited.
                 start_to_close_timeout=timedelta(minutes=15),
+                heartbeat_timeout=PROCESSING_HEARTBEAT_TIMEOUT,
             )
         except ActivityError as exc:
             workflow.logger.error(

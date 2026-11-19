@@ -34,7 +34,8 @@ class MinioObjectCreatedHandler(EventHandler):
     """Thin handler: Kafka is the trigger, Temporal owns the transaction.
 
     One upload starts one workflow with the id 'ingestion-job-<document_id>', so a
-    duplicate event does not start a second run.
+    duplicate event does not start a second run, also not after a failed run (the
+    workflow retries transient errors itself; a client re-uploads a failed file).
     """
 
     def __init__(
@@ -95,7 +96,7 @@ class MinioObjectCreatedHandler(EventHandler):
                 payload.model_dump(mode="json"),
                 id=workflow_id,
                 task_queue=self.temporal_task_queue,
-                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
             )
             logger.info("Started workflow %s.", workflow_id)
         except WorkflowAlreadyStartedError:
