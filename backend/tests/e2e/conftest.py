@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic import command
 from alembic.config import Config
 from minio import Minio
 from sqlalchemy.ext.asyncio import (
@@ -23,6 +22,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+
+from alembic import command
 from src.libs.core.config import get_settings
 
 # The images of docker/compose.yaml, so the test runs what the stack runs.

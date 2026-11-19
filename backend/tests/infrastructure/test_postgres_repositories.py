@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.exc import IntegrityError, OperationalError
+
 from src.infrastructure.database.postgres.mapper.document import DocumentMapper
 from src.infrastructure.database.postgres.mapper.ingestionjob import IngestionJobMapper
 from src.infrastructure.database.postgres.mapper.tenant import TenantMapper
@@ -269,6 +270,54 @@ class TestUnknownKeys:
 
         with pytest.raises(TenantNotFoundException, match=str(tenant_id)):
             await PostgresTenantRepository(mock_db_session).get_one(tenant_id)
+
+
+class TestTenantLookup:
+    """find_by_organisation() returns the tenant with that name, or None."""
+
+    async def test_existing_organisation_is_returned(
+        self, tenant_entity, mock_db_session
+    ):
+        """
+        GIVEN a tenant with the organisation name
+        WHEN it is looked up by that name
+        THEN the tenant entity is returned
+        """
+        model = TenantMapper.to_model(tenant_entity)
+        mock_db_session.execute.return_value = result_with(model)
+
+        found = await PostgresTenantRepository(mock_db_session).find_by_organisation(
+            tenant_entity.organisation
+        )
+
+        assert found == tenant_entity
+
+    async def test_unknown_organisation_returns_none(self, mock_db_session):
+        """
+        GIVEN no tenant with the organisation name
+        WHEN it is looked up
+        THEN None is returned, not an error
+        """
+        mock_db_session.execute.return_value = result_with(None)
+
+        found = await PostgresTenantRepository(mock_db_session).find_by_organisation(
+            "ACME"
+        )
+
+        assert found is None
+
+    async def test_database_error_is_translated(self, mock_db_session):
+        """
+        GIVEN the database fails
+        WHEN a tenant is looked up
+        THEN DatabaseException is raised
+        """
+        mock_db_session.execute.side_effect = OperationalError(
+            "SELECT", {}, Exception()
+        )
+
+        with pytest.raises(DatabaseException):
+            await PostgresTenantRepository(mock_db_session).find_by_organisation("ACME")
 
 
 @pytest.fixture

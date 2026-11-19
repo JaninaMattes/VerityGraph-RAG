@@ -23,6 +23,11 @@ import pytest_asyncio
 from minio import Minio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from temporalio.client import Client, WorkflowFailureError
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
+
 from src.domain.chunks.entities import Chunk
 from src.domain.chunks.service import ChunkService
 from src.domain.documents.entities import DocumentEntity
@@ -46,10 +51,6 @@ from src.infrastructure.workflow_execution.temporalio.workflows import (
 )
 from src.libs.enums.document import DocumentStatus
 from src.libs.enums.ingestionjob import ProcessingStatus
-from temporalio.client import Client, WorkflowFailureError
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
 from tests.e2e.conftest import MinioServer
 from tests.integration.pdf import text_pdf
 

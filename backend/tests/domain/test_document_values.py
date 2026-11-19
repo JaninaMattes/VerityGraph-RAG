@@ -5,6 +5,7 @@ import uuid
 from hashlib import sha256
 
 import pytest
+
 from src.domain.documents.dataclasses import DocumentChecksum, StorageKey
 
 DOCUMENT_ID = uuid.UUID("39b02a26-86d0-4dd6-ae6e-7a0ea578f290")

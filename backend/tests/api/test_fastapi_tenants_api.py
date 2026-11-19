@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.libs.enums.tenant import TenantStatus
 from src.libs.exceptions.exceptions import (

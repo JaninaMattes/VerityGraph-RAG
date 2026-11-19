@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+
 from src.domain.users.dataclasses import UpdateUser, User
 from src.libs.exceptions.exceptions import (
     ConflictException,

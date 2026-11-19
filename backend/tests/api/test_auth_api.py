@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+
+from src.api.rate_limit import RateLimiter
 from src.domain.auth.entities import Principal
 from src.infrastructure.security.tokens import (
     create_access_token,
@@ -137,6 +139,31 @@ class TestLogin:
         response = await client.post("/api/v1/auth/token", data=form)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        mock_auth_service.authenticate.assert_not_awaited()
+
+    async def test_too_many_attempts_return_429_without_password_check(
+        self,
+        client: AsyncClient,
+        mock_auth_service: AsyncMock,
+        login_limiter: RateLimiter,
+    ):
+        """
+        GIVEN a client address that used all its login attempts in this minute
+        WHEN it posts the login form again
+        THEN the response is 429 with Retry-After
+        AND the password is not checked (no Argon2 work for the attacker)
+        """
+        mock_auth_service.authenticate.side_effect = AuthenticationException("Wrong.")
+        form = {"username": "ada@example.com", "password": PASSWORD}
+        for _ in range(login_limiter.limit):
+            await client.post("/api/v1/auth/token", data=form)
+        mock_auth_service.authenticate.reset_mock()
+
+        response = await client.post("/api/v1/auth/token", data=form)
+
+        assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert int(response.headers["Retry-After"]) >= 1
+        assert response.json()["error"] == "too_many_requests"
         mock_auth_service.authenticate.assert_not_awaited()
 
 

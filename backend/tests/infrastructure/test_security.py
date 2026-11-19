@@ -6,6 +6,7 @@ from typing import Any
 
 import jwt
 import pytest
+
 from src.domain.auth.entities import Principal
 from src.infrastructure.security.passwords import Argon2PasswordHasher
 from src.infrastructure.security.tokens import (

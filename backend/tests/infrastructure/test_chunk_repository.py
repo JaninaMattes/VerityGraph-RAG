@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.exc import OperationalError
+
 from src.domain.chunks.entities import (
     BoundingBox,
     ChunkDraft,

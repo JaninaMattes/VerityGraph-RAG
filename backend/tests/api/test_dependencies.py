@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from minio import Minio
+
 from src.api import dependencies as deps
 from src.domain.auth.entities import Principal
 from src.domain.auth.service import AuthService
@@ -139,6 +140,19 @@ class TestProviders:
             PostgresChunkRepository,
         ]
         assert all(r._session is session for r in repositories)
+
+    def test_login_limiter_is_one_per_process_with_the_configured_limit(self):
+        """
+        GIVEN the configured login attempts per minute
+        WHEN the login limiter is provided twice
+        THEN both calls return the same limiter with that limit
+        """
+        deps.get_login_rate_limiter.cache_clear()
+
+        limiter = deps.get_login_rate_limiter()
+
+        assert limiter is deps.get_login_rate_limiter()
+        assert limiter.limit == deps.get_settings().login_attempts_per_minute
 
     def test_services_receive_their_dependencies(self):
         """

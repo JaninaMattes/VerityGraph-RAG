@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+
 from src import main
 from src.api.middleware import REQUEST_ID_HEADER
 from src.libs.core.config import Settings

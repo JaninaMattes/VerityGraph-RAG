@@ -21,6 +21,7 @@ from docling_core.types.doc.base import BoundingBox, CoordOrigin
 from docling_core.types.doc.common.reference import ProvenanceItem
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.labels import DocItemLabel
+
 from src.domain.chunks.entities import BoundingBox as DomainBox
 from src.domain.chunks.entities import ChunkingConfig
 from src.infrastructure.parsing import docling as module

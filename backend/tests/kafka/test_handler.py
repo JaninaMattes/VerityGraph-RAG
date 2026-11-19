@@ -5,9 +5,10 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
+
+from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 
 TENANT_ID = "12bf3456-7d89-12d3-a456-78c91cf2b34f"
 DOCUMENT_ID = "39b02a26-86d0-4dd6-ae6e-7a0ea578f290"
@@ -83,10 +84,8 @@ class TestStartsIngestionWorkflow:
         }
         assert kwargs["id"] == f"ingestion-job-{DOCUMENT_ID}"
         assert kwargs["task_queue"] == "test-queue"
-        assert (
-            kwargs["id_reuse_policy"]
-            == WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
-        )
+        # One object key starts one workflow ever, even after a failed run.
+        assert kwargs["id_reuse_policy"] == WorkflowIDReusePolicy.REJECT_DUPLICATE
 
     async def test_document_id_excludes_file_extension(
         self, handler: MinioObjectCreatedHandler, temporal_client: AsyncMock

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from minio import Minio, S3Error
+
 from src.domain.documents.dataclasses import StorageKey, StoredFile
 from src.infrastructure.storage.client import create_storage_client
 from src.infrastructure.storage.minio.storage import MinioStorage

@@ -7,12 +7,13 @@ import os
 import uuid
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import Enum, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.cli import create_admin
+
+from alembic import command
+from src.cli import create_admin, seed_demo
 from src.domain.auth.service import AuthService
 from src.domain.chunks.entities import (
     BoundingBox,
@@ -354,7 +355,7 @@ class TestConstraints:
 
 
 class TestLogin:
-    """An admin created by the CLI can log in; a disabled user cannot."""
+    """Users created by the CLI can log in; a disabled user cannot."""
 
     PASSWORD = "correct horse battery"
 
@@ -393,6 +394,56 @@ class TestLogin:
         assert principal.is_admin
         with pytest.raises(AuthenticationException):
             await self.auth(session).authenticate("root@example.com", "wrong password!")
+
+    async def test_second_run_changes_nothing_and_login_still_works(
+        self, session: AsyncSession
+    ):
+        """
+        GIVEN an admin created with the bootstrap command
+        WHEN the command runs again with the same organisation
+        THEN it returns None AND there is still one tenant and one user
+        AND the admin can still log in (no second account with the same email)
+        """
+        admin = await self.admin(session)
+
+        again = await create_admin(
+            session,
+            Argon2PasswordHasher(),
+            organisation="ACME",
+            username="root",
+            email="root@example.com",
+            password=self.PASSWORD,
+        )
+        await session.commit()
+
+        assert again is None
+        assert await session.scalar(select(func.count()).select_from(Tenant)) == 1
+        assert await session.scalar(select(func.count()).select_from(User)) == 1
+        principal = await self.auth(session).authenticate(
+            "root@example.com", self.PASSWORD
+        )
+        assert principal.user_id == admin.user_id
+
+    async def test_seeded_demo_users_log_in_with_printed_passwords(
+        self, session: AsyncSession
+    ):
+        """
+        GIVEN the seeded demo tenant
+        WHEN its admin and its member log in with the returned passwords
+        THEN both log in to the same tenant, and only the admin has the admin role
+        """
+        passwords = await seed_demo(session, Argon2PasswordHasher())
+        await session.commit()
+        assert passwords is not None
+        (admin_email, admin_password), (member_email, member_password) = (
+            passwords.items()
+        )
+
+        admin = await self.auth(session).authenticate(admin_email, admin_password)
+        member = await self.auth(session).authenticate(member_email, member_password)
+
+        assert admin.tenant_id == member.tenant_id
+        assert (admin.is_admin, member.is_admin) == (True, False)
 
     async def test_disabled_user_cannot_log_in(self, session: AsyncSession):
         """

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import AsyncClient
+
 from src.api.dependencies import get_readiness_probes
 from src.api.routers import health
 from src.libs.exceptions.exceptions import BucketNotFoundException

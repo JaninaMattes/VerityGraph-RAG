@@ -8,6 +8,13 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
+from temporalio import activity
+from temporalio.client import WorkflowFailureError
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Replayer, Worker
+
 from src.infrastructure.workflow_execution.temporalio.models import (
     CreateDocumentPayload,
     CreateIngestionJobPayload,
@@ -18,15 +25,10 @@ from src.infrastructure.workflow_execution.temporalio.models import (
     UpdateIngestionJobPayload,
 )
 from src.infrastructure.workflow_execution.temporalio.workflows import (
+    PROCESSING_HEARTBEAT_TIMEOUT,
     DocumentIngestionWorkflow,
     processing_task_queue,
 )
-from temporalio import activity
-from temporalio.client import WorkflowFailureError
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Replayer, Worker
 
 TASK_QUEUE = "test-ingestion"
 DOCUMENT_ID = str(uuid.uuid4())
@@ -202,6 +204,7 @@ class TestSuccessfulIngestion:
         THEN it ran on the processing task queue (a worker parses few files at once)
         AND it has no schedule-to-close deadline, so a backlog waits instead of
             failing; each attempt keeps its start-to-close limit
+        AND it has a heartbeat timeout, so a dead worker is found early
         """
         await run_workflow(env, FakeActivities())
         history = await env.client.get_workflow_handle(
@@ -219,6 +222,8 @@ class TestSuccessfulIngestion:
         # Unset, the server reports its maximum (years), not the old 30 minutes.
         assert scheduled.schedule_to_close_timeout.ToTimedelta() > timedelta(days=1)
         assert scheduled.start_to_close_timeout.ToTimedelta() > timedelta(0)
+        # A worker that dies while parsing is detected within this time.
+        assert scheduled.heartbeat_timeout.ToTimedelta() == PROCESSING_HEARTBEAT_TIMEOUT
 
     async def test_history_replays_deterministically(self, env: WorkflowEnvironment):
         """

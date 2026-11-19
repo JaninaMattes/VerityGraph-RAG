@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+
 from src.libs.core.logger import setup_logging
 from src.libs.exceptions.exception_handlers import register_exception_handlers
 from src.libs.exceptions.exceptions import (
@@ -16,6 +17,7 @@ from src.libs.exceptions.exceptions import (
     DocumentNotFoundException,
     StorageAccessDeniedException,
     StorageException,
+    TooManyRequestsException,
 )
 
 
@@ -90,6 +92,18 @@ class TestErrorResponses:
         body = response.json()
         assert body["error"] == error
         assert str(exc) not in body["message"]
+
+    def test_too_many_requests_says_when_to_retry(self):
+        """
+        GIVEN a route that raises TooManyRequestsException with retry_after=40
+        WHEN the route is called
+        THEN the response is 429 'too_many_requests' with the header Retry-After: 40
+        """
+        response = client_raising(TooManyRequestsException(retry_after=40)).get("/")
+
+        assert response.status_code == 429
+        assert response.json()["error"] == "too_many_requests"
+        assert response.headers["Retry-After"] == "40"
 
     def test_validation_error_uses_the_same_envelope(self):
         """

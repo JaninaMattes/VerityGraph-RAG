@@ -4,13 +4,18 @@ Each activity must classify errors correctly: data errors and missing records ar
 non-retryable; database and storage faults are retryable.
 """
 
+import asyncio
 import os
+import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import ActivityEnvironment
+
 from src.domain.chunks.entities import ChunkDraft, ChunkingConfig
 from src.domain.documents.entities import DocumentEntity
 from src.domain.ingestions.entities import IngestionJobEntity
@@ -37,8 +42,6 @@ from src.libs.exceptions.exceptions import (
     StorageAccessDeniedException,
     StorageException,
 )
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import ActivityEnvironment
 
 MODULE = "src.infrastructure.workflow_execution.temporalio.activities"
 DOCUMENT_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -52,6 +55,7 @@ def storage() -> MagicMock:
 
 
 MAX_FILE_BYTES = 1_000
+HEARTBEAT_SECONDS = 0.01
 CHUNKING_CONFIG = ChunkingConfig(
     component="docling-hybrid-chunker", component_version="1"
 )
@@ -78,6 +82,7 @@ def activities(
         storage=storage,
         chunker=chunker,
         max_file_bytes=MAX_FILE_BYTES,
+        heartbeat_seconds=HEARTBEAT_SECONDS,
     )
 
 
@@ -614,6 +619,46 @@ class TestProcessDocumentActivity:
         ]
         mock_db_session.commit.assert_awaited_once()
         assert result.chunks_processed == 2
+
+    async def test_heartbeats_are_sent_while_the_file_is_parsed(
+        self, env, activities, chunker
+    ):
+        """
+        GIVEN a parse that takes 10 heartbeat intervals (in a thread)
+        WHEN the activity runs
+        THEN it sends heartbeats during the parse, so Temporal knows it is alive
+        AND it sends none after it has finished
+        """
+        drafts = chunker.chunk.return_value
+        chunker.chunk.side_effect = lambda path: (
+            time.sleep(10 * HEARTBEAT_SECONDS) or drafts
+        )
+        heartbeats: list[tuple] = []
+        env.on_heartbeat = lambda *details: heartbeats.append(details)
+
+        await env.run(activities.process_document_activity, self.payload())
+        sent = len(heartbeats)
+        await asyncio.sleep(5 * HEARTBEAT_SECONDS)
+
+        assert sent >= 3
+        assert len(heartbeats) == sent
+
+    async def test_heartbeats_stop_when_the_parse_fails(self, env, activities, chunker):
+        """
+        GIVEN a parse that fails
+        WHEN the activity runs
+        THEN the heartbeats stop with the error
+        """
+        chunker.chunk.side_effect = DocumentParsingException("corrupt file")
+        heartbeats: list[tuple] = []
+        env.on_heartbeat = lambda *details: heartbeats.append(details)
+
+        with pytest.raises(ApplicationError):
+            await env.run(activities.process_document_activity, self.payload())
+        sent = len(heartbeats)
+        await asyncio.sleep(5 * HEARTBEAT_SECONDS)
+
+        assert len(heartbeats) == sent
 
     async def test_parsing_error_is_non_retryable(
         self, env, activities, chunker, chunk_repo

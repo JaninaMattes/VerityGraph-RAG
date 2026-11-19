@@ -9,6 +9,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+
 from src.domain.auth.hasher import PasswordHasher
 from src.domain.chunks.entities import ChunkDraft, ChunkingConfig, build_chunks
 from src.domain.chunks.service import ChunkService

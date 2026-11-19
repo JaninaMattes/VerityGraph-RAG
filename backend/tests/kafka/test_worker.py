@@ -5,9 +5,10 @@ import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from temporalio.contrib.pydantic import pydantic_data_converter
+
 from src.infrastructure.message_broker.kafka import worker
 from src.libs.core.config import Settings
-from temporalio.contrib.pydantic import pydantic_data_converter
 
 MODULE = "src.infrastructure.message_broker.kafka.worker"
 

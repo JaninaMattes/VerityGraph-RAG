@@ -13,14 +13,17 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+
 from src.api.dependencies import (
     get_auth_service,
     get_chunk_service,
     get_current_principal,
     get_document_service,
+    get_login_rate_limiter,
     get_tenant_service,
     get_user_service,
 )
+from src.api.rate_limit import RateLimiter
 from src.domain.auth.entities import Principal
 from src.domain.auth.service import AuthService
 from src.domain.chunks.service import ChunkService
@@ -57,6 +60,13 @@ def mock_auth_service() -> AsyncMock:
     return AsyncMock(spec=AuthService)
 
 
+@pytest.fixture
+def login_limiter() -> RateLimiter:
+    """A fresh login limiter per test, so the attempts of one test do not count in
+    the next."""
+    return RateLimiter(limit=3)
+
+
 @pytest.fixture(autouse=True)
 def mock_services(
     mock_document_service: AsyncMock,
@@ -64,6 +74,7 @@ def mock_services(
     mock_tenant_service: AsyncMock,
     mock_user_service: AsyncMock,
     mock_auth_service: AsyncMock,
+    login_limiter: RateLimiter,
 ) -> None:
     """Replace every service with its mock (the root conftest clears overrides)."""
     app.dependency_overrides.update(
@@ -73,6 +84,7 @@ def mock_services(
             get_tenant_service: lambda: mock_tenant_service,
             get_user_service: lambda: mock_user_service,
             get_auth_service: lambda: mock_auth_service,
+            get_login_rate_limiter: lambda: login_limiter,
         }
     )
 

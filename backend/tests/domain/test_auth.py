@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+
 from src.domain.auth.entities import Principal
 from src.domain.auth.service import AuthService
 from src.domain.users.entities import UserEntity

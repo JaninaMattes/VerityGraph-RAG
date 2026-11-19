@@ -1,6 +1,7 @@
 from fastapi import status
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
+
 from src.api.dependencies import get_settings
 from src.libs.schemas.health import AppHealthResponse
 from src.main import app

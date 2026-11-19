@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import HttpUrl, PostgresDsn, SecretStr
+
 from src.api.dependencies import get_settings
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity

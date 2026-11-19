@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiokafka import TopicPartition
+
 from src.infrastructure.message_broker.kafka.manager import KafkaEventManager
 
 PUT = "s3:ObjectCreated:Put"
