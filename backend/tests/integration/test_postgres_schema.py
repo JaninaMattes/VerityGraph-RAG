@@ -7,12 +7,13 @@ import os
 import uuid
 
 import pytest
+from alembic import command
 from alembic.config import Config
-from sqlalchemy import Enum, func, select, text
+from sqlalchemy import Enum, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from alembic import command
+from src.cli import create_admin
+from src.domain.auth.service import AuthService
 from src.domain.chunks.entities import (
     BoundingBox,
     ChunkDraft,
@@ -20,6 +21,7 @@ from src.domain.chunks.entities import (
     ChunkSpan,
     build_chunks,
 )
+from src.domain.users.entities import UserEntity
 from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models import (
     Document,
@@ -33,7 +35,13 @@ from src.infrastructure.database.postgres.models import (
 from src.infrastructure.database.postgres.repositories.chunk import (
     PostgresChunkRepository,
 )
+from src.infrastructure.database.postgres.repositories.user import (
+    PostgresUserRepository,
+)
+from src.infrastructure.security.passwords import Argon2PasswordHasher
 from src.libs.enums.document import DocumentStatus
+from src.libs.enums.user import UserStatus
+from src.libs.exceptions.exceptions import AuthenticationException
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL is not set"
@@ -131,6 +139,24 @@ class TestMigrations:
 
 class TestChunkStorage:
     """Chunks and spans are stored, replaced and deleted as one unit."""
+
+    async def test_chunks_are_listed_in_pages(self, session: AsyncSession):
+        """
+        GIVEN a document with five chunks
+        WHEN the chunks are listed with limit 2 and offset 2
+        THEN the result is the third and fourth chunk
+        """
+        tenant_id, document_id = await add_document(session)
+        chunks = chunks_for(tenant_id, document_id, "a", "b", "c", "d", "e")
+        repository = PostgresChunkRepository(session)
+        await repository.replace_for_document(document_id, tenant_id, CONFIG, chunks)
+        await session.commit()
+
+        page = await repository.list_for_document(
+            document_id, tenant_id, limit=2, offset=2
+        )
+
+        assert [c.content for c in page] == ["c", "d"]
 
     async def test_chunks_and_spans_round_trip(self, session: AsyncSession):
         """
@@ -325,3 +351,62 @@ class TestConstraints:
         )
         with pytest.raises(IntegrityError, match="ck_span_page_no"):
             await session.commit()
+
+
+class TestLogin:
+    """An admin created by the CLI can log in; a disabled user cannot."""
+
+    PASSWORD = "correct horse battery"
+
+    async def admin(self, session: AsyncSession) -> UserEntity:
+        admin = await create_admin(
+            session,
+            Argon2PasswordHasher(),
+            organisation="ACME",
+            username="root",
+            email="root@example.com",
+            password=self.PASSWORD,
+        )
+        await session.commit()
+        return admin
+
+    def auth(self, session: AsyncSession) -> AuthService:
+        return AuthService(PostgresUserRepository(session), Argon2PasswordHasher())
+
+    async def test_admin_logs_in_with_its_password(self, session: AsyncSession):
+        """
+        GIVEN an admin created with the bootstrap command
+        WHEN it logs in with its email and password
+        THEN the principal is that admin, with the admin role
+        AND a wrong password is rejected
+        """
+        admin = await self.admin(session)
+
+        principal = await self.auth(session).authenticate(
+            "root@example.com", self.PASSWORD
+        )
+
+        assert (principal.user_id, principal.tenant_id) == (
+            admin.user_id,
+            admin.tenant_id,
+        )
+        assert principal.is_admin
+        with pytest.raises(AuthenticationException):
+            await self.auth(session).authenticate("root@example.com", "wrong password!")
+
+    async def test_disabled_user_cannot_log_in(self, session: AsyncSession):
+        """
+        GIVEN an admin that was disabled
+        WHEN it logs in with the right password
+        THEN AuthenticationException is raised
+        """
+        admin = await self.admin(session)
+        await session.execute(
+            update(User)
+            .where(User.user_id == admin.user_id)
+            .values(status=UserStatus.DISABLED)
+        )
+        await session.commit()
+
+        with pytest.raises(AuthenticationException):
+            await self.auth(session).authenticate("root@example.com", self.PASSWORD)

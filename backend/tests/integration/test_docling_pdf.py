@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.domain.chunks.entities import build_chunks
 from src.infrastructure.database.postgres.repositories.chunk import (
     PostgresChunkRepository,

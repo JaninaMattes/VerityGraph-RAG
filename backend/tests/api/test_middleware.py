@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from src.api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 from src.libs.core.logger import setup_logging
 

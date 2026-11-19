@@ -21,7 +21,6 @@ from docling_core.types.doc.base import BoundingBox, CoordOrigin
 from docling_core.types.doc.common.reference import ProvenanceItem
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.labels import DocItemLabel
-
 from src.domain.chunks.entities import BoundingBox as DomainBox
 from src.domain.chunks.entities import ChunkingConfig
 from src.infrastructure.parsing import docling as module
@@ -29,6 +28,7 @@ from src.infrastructure.parsing.docling import DoclingChunker, create_docling_ch
 from src.libs.exceptions.exceptions import DocumentParsingException
 
 CONFIG = ChunkingConfig(component="docling-hybrid-chunker", component_version="1")
+MAX_PAGES, MAX_BYTES = 50, 1_000_000
 
 
 def prov(
@@ -75,7 +75,13 @@ def make_chunker(document: DoclingDocument, chunks: list[DocChunk]) -> DoclingCh
     hybrid = MagicMock()
     hybrid.chunk.return_value = chunks
     hybrid.tokenizer.count_tokens.side_effect = lambda text: len(text.split())
-    return DoclingChunker(converter=converter, chunker=hybrid, config=CONFIG)
+    return DoclingChunker(
+        converter=converter,
+        chunker=hybrid,
+        config=CONFIG,
+        max_pages=MAX_PAGES,
+        max_bytes=MAX_BYTES,
+    )
 
 
 class TestChunk:
@@ -290,15 +296,18 @@ class TestChunk:
 
     def test_converter_receives_the_file_path(self, document):
         """
-        GIVEN a chunker
+        GIVEN a chunker with a page and size limit
         WHEN a file is chunked
-        THEN the converter is called once with that file path
+        THEN the converter is called once with that file path and both limits
+            (Docling fails a larger file before it runs any model)
         """
         chunker = make_chunker(document, [])
 
         chunker.chunk(Path("/tmp/report.pdf"))
 
-        chunker._converter.convert.assert_called_once_with(Path("/tmp/report.pdf"))
+        chunker._converter.convert.assert_called_once_with(
+            Path("/tmp/report.pdf"), max_num_pages=MAX_PAGES, max_file_size=MAX_BYTES
+        )
 
     def test_other_errors_are_not_wrapped(self, document):
         """
@@ -321,7 +330,7 @@ class TestChunk:
         active = peak = 0
         counter = threading.Lock()
 
-        def slow_convert(_path: Path) -> SimpleNamespace:
+        def slow_convert(_path: Path, **_limits: int) -> SimpleNamespace:
             nonlocal active, peak
             with counter:
                 active += 1
@@ -350,7 +359,13 @@ class TestWithHybridChunker:
         hybrid = HybridChunker(
             tokenizer=WordTokenizer(max_tokens=max_tokens), merge_peers=True
         )
-        return DoclingChunker(converter=converter, chunker=hybrid, config=CONFIG)
+        return DoclingChunker(
+            converter=converter,
+            chunker=hybrid,
+            config=CONFIG,
+            max_pages=MAX_PAGES,
+            max_bytes=MAX_BYTES,
+        )
 
     def test_sections_give_headings_and_exact_char_ranges(self):
         """
@@ -419,7 +434,11 @@ class TestFactory:
             patch.object(module, "HybridChunker") as hybrid_cls,
         ):
             chunker = create_docling_chunker(
-                tokenizer_model="BAAI/bge-small-en-v1.5", max_tokens=256, do_ocr=False
+                tokenizer_model="BAAI/bge-small-en-v1.5",
+                max_tokens=256,
+                do_ocr=False,
+                max_pages=MAX_PAGES,
+                max_bytes=MAX_BYTES,
             )
 
         tokenizer_cls.from_pretrained.assert_called_once_with(
@@ -446,8 +465,20 @@ class TestFactory:
                 tokenizer_model="BAAI/bge-small-en-v1.5",
                 max_tokens=max_tokens,
                 do_ocr=do_ocr,
+                max_pages=MAX_PAGES,
+                max_bytes=MAX_BYTES,
             )
         return chunker, tokenizer_cls, hybrid_cls
+
+    def test_limits_reach_the_chunker(self):
+        """
+        GIVEN a page and a size limit
+        WHEN the chunker is created
+        THEN it applies both limits to every conversion
+        """
+        chunker, _, _ = self.build()
+
+        assert (chunker.max_pages, chunker.max_bytes) == (MAX_PAGES, MAX_BYTES)
 
     def test_hybrid_chunker_gets_tokenizer_and_merges_peers(self):
         """

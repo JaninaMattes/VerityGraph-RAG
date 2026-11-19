@@ -9,7 +9,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
-
+from src.domain.auth.hasher import PasswordHasher
 from src.domain.chunks.entities import ChunkDraft, ChunkingConfig, build_chunks
 from src.domain.chunks.service import ChunkService
 from src.domain.documents.dataclasses import PresignedUrl
@@ -27,7 +27,9 @@ from src.libs.exceptions.exceptions import (
     StorageException,
 )
 
-pytestmark = pytest.mark.asyncio
+PASSWORD = "correct horse battery"
+HASHER = MagicMock(spec=PasswordHasher)
+HASHER.hash.side_effect = lambda password: f"hashed:{password}"
 
 
 class TestTenantService:
@@ -113,16 +115,55 @@ class TestUserService:
         WHEN a user is created
         THEN the repository receives a CREATED user with role USER in that tenant
         """
-        repo.create.side_effect = lambda entity: entity
+        repo.create.side_effect = lambda entity, password_hash: entity
 
-        user = await UserService(repo).create(
-            User("ada", "ada@example.com", "hash"), mock_tenant_id
+        user = await UserService(repo, HASHER).create(
+            User("ada", "ada@example.com", PASSWORD), mock_tenant_id
         )
 
         assert (user.username, user.email) == ("ada", "ada@example.com")
         assert user.tenant_id == mock_tenant_id
         assert user.roles == [UserRole.USER]
         assert user.status is UserStatus.CREATED
+
+    async def test_create_stores_only_the_password_hash(self, repo, mock_tenant_id):
+        """
+        GIVEN a new user with a password
+        WHEN the user is created
+        THEN the repository receives the hash of the password, never the password
+        """
+        repo.create.side_effect = lambda entity, password_hash: entity
+
+        await UserService(repo, HASHER).create(
+            User("ada", "ada@example.com", PASSWORD), mock_tenant_id
+        )
+
+        _, password_hash = repo.create.call_args.args
+        assert password_hash == f"hashed:{PASSWORD}"
+
+    async def test_create_with_admin_role(self, repo, mock_tenant_id):
+        """
+        GIVEN the role ADMIN
+        WHEN a user is created with it (the bootstrap command does this)
+        THEN the user has only that role
+        """
+        repo.create.side_effect = lambda entity, password_hash: entity
+
+        user = await UserService(repo, HASHER).create(
+            User("root", "root@example.com", PASSWORD),
+            mock_tenant_id,
+            roles=(UserRole.ADMIN,),
+        )
+
+        assert user.roles == [UserRole.ADMIN]
+
+    def test_new_user_repr_hides_the_password(self):
+        """
+        GIVEN a new user with a password
+        WHEN it is turned into text (for example in a log line)
+        THEN the password does not appear
+        """
+        assert PASSWORD not in repr(User("ada", "ada@example.com", PASSWORD))
 
     async def test_get_reads_within_tenant(self, repo, user_entity):
         """
@@ -132,7 +173,9 @@ class TestUserService:
         """
         repo.get_one.return_value = user_entity
 
-        result = await UserService(repo).get(user_entity.user_id, user_entity.tenant_id)
+        result = await UserService(repo, HASHER).get(
+            user_entity.user_id, user_entity.tenant_id
+        )
 
         assert result is user_entity
         repo.get_one.assert_awaited_once_with(
@@ -148,7 +191,7 @@ class TestUserService:
         repo.get_one.return_value = user_entity
         repo.update.side_effect = lambda entity: entity
 
-        updated = await UserService(repo).update(
+        updated = await UserService(repo, HASHER).update(
             UpdateUser(
                 user_entity.user_id, user_entity.tenant_id, "grace", "g@example.com"
             )
@@ -164,7 +207,7 @@ class TestUserService:
         WHEN the user is deleted
         THEN the repository deletes exactly that user
         """
-        await UserService(repo).delete(mock_user_id, mock_tenant_id)
+        await UserService(repo, HASHER).delete(mock_user_id, mock_tenant_id)
 
         repo.delete.assert_awaited_once_with(mock_user_id, mock_tenant_id)
 
@@ -315,10 +358,13 @@ class TestChunkService:
         chunk_repo.list_for_document.return_value = chunks
 
         result = await ChunkService(doc_repo, chunk_repo).list_for_document(
-            document_entity.document_id, mock_tenant_id
+            document_entity.document_id, mock_tenant_id, limit=10, offset=20
         )
 
         assert result == chunks
+        chunk_repo.list_for_document.assert_awaited_once_with(
+            document_entity.document_id, mock_tenant_id, limit=10, offset=20
+        )
         doc_repo.get_one.assert_awaited_once_with(
             document_entity.document_id, mock_tenant_id
         )

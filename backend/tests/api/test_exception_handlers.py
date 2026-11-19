@@ -7,7 +7,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
-
 from src.libs.core.logger import setup_logging
 from src.libs.exceptions.exception_handlers import register_exception_handlers
 from src.libs.exceptions.exceptions import (

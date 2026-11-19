@@ -5,12 +5,9 @@ import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from temporalio.contrib.pydantic import pydantic_data_converter
-
 from src.infrastructure.message_broker.kafka import worker
 from src.libs.core.config import Settings
-
-pytestmark = pytest.mark.asyncio
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 MODULE = "src.infrastructure.message_broker.kafka.worker"
 
@@ -141,14 +138,25 @@ class TestMain:
             await worker.main()
 
         assert connect.call_args.kwargs["data_converter"] is pydantic_data_converter
-        kwargs = worker_cls.call_args.kwargs
-        assert kwargs["task_queue"] == test_settings.temporal_task_queue
-        assert kwargs["workflows"] == [worker.DocumentIngestionWorkflow]
-        assert len(kwargs["activities"]) == 5
+        main_worker, parse_worker = (call.kwargs for call in worker_cls.call_args_list)
+        assert main_worker["task_queue"] == test_settings.temporal_task_queue
+        assert main_worker["workflows"] == [worker.DocumentIngestionWorkflow]
+        assert len(main_worker["activities"]) == 4
+        # Parsing has its own queue, so it never blocks the short database activities.
+        assert parse_worker["task_queue"] == worker.processing_task_queue(
+            test_settings.temporal_task_queue
+        )
+        assert len(parse_worker["activities"]) == 1
+        assert (
+            parse_worker["max_concurrent_activities"]
+            == test_settings.max_concurrent_parses
+        )
         create_chunker.assert_called_once_with(
             tokenizer_model=test_settings.chunk_tokenizer_model,
             max_tokens=test_settings.chunk_max_tokens,
             do_ocr=test_settings.docling_do_ocr,
+            max_pages=test_settings.max_document_pages,
+            max_bytes=test_settings.max_upload_bytes,
         )
         registered = [call.args[0] for call in manager.register_handler.call_args_list]
         assert registered == list(worker.EVENT_TYPES)

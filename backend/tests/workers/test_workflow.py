@@ -3,17 +3,11 @@
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import timedelta
 from typing import Any
 
 import pytest
 import pytest_asyncio
-from temporalio import activity
-from temporalio.client import WorkflowFailureError
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Replayer, Worker
-
 from src.infrastructure.workflow_execution.temporalio.models import (
     CreateDocumentPayload,
     CreateIngestionJobPayload,
@@ -25,9 +19,14 @@ from src.infrastructure.workflow_execution.temporalio.models import (
 )
 from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
+    processing_task_queue,
 )
-
-pytestmark = pytest.mark.asyncio
+from temporalio import activity
+from temporalio.client import WorkflowFailureError
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Replayer, Worker
 
 TASK_QUEUE = "test-ingestion"
 DOCUMENT_ID = str(uuid.uuid4())
@@ -74,6 +73,14 @@ class FakeActivities:
 
         return [create_document, create_job, process, update_document, update_job]
 
+    def database(self) -> list[Any]:
+        """The short database activities (every activity except the parsing one)."""
+        return [fn for fn in self.all() if fn.__name__ != "process"]
+
+    def processing(self) -> list[Any]:
+        """The parsing activity, which runs on its own task queue."""
+        return [fn for fn in self.all() if fn.__name__ == "process"]
+
     def names(self) -> list[str]:
         return [name for name, _ in self.calls]
 
@@ -115,7 +122,12 @@ async def run_workflow(env: WorkflowEnvironment, fakes: FakeActivities) -> Any:
             env.client,
             task_queue=TASK_QUEUE,
             workflows=[DocumentIngestionWorkflow],
-            activities=fakes.all(),
+            activities=fakes.database(),
+        ),
+        Worker(
+            env.client,
+            task_queue=processing_task_queue(TASK_QUEUE),
+            activities=fakes.processing(),
         ),
         asyncio.timeout(30),
     ):
@@ -180,6 +192,33 @@ class TestSuccessfulIngestion:
         assert fakes.payload("update_job").job_id == created.job_id
         assert created.workflow_id == f"ingestion-job-{DOCUMENT_ID}"
         uuid.UUID(created.job_id)
+
+    async def test_parsing_runs_on_its_own_queue_without_total_deadline(
+        self, env: WorkflowEnvironment
+    ):
+        """
+        GIVEN a completed workflow run
+        WHEN the scheduling of the parsing activity is read from the history
+        THEN it ran on the processing task queue (a worker parses few files at once)
+        AND it has no schedule-to-close deadline, so a backlog waits instead of
+            failing; each attempt keeps its start-to-close limit
+        """
+        await run_workflow(env, FakeActivities())
+        history = await env.client.get_workflow_handle(
+            f"ingestion-job-{DOCUMENT_ID}"
+        ).fetch_history()
+
+        (scheduled,) = [
+            event.activity_task_scheduled_event_attributes
+            for event in history.events
+            if event.HasField("activity_task_scheduled_event_attributes")
+            and event.activity_task_scheduled_event_attributes.activity_type.name
+            == "process_document_activity"
+        ]
+        assert scheduled.task_queue.name == processing_task_queue(TASK_QUEUE)
+        # Unset, the server reports its maximum (years), not the old 30 minutes.
+        assert scheduled.schedule_to_close_timeout.ToTimedelta() > timedelta(days=1)
+        assert scheduled.start_to_close_timeout.ToTimedelta() > timedelta(0)
 
     async def test_history_replays_deterministically(self, env: WorkflowEnvironment):
         """

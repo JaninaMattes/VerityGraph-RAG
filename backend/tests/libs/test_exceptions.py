@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-
 from src.libs.exceptions.exceptions import (
     ApplicationException,
     BucketNotFoundException,

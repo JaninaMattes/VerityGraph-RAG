@@ -5,12 +5,9 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
-
-from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
-
-pytestmark = pytest.mark.asyncio
 
 TENANT_ID = "12bf3456-7d89-12d3-a456-78c91cf2b34f"
 DOCUMENT_ID = "39b02a26-86d0-4dd6-ae6e-7a0ea578f290"
@@ -184,6 +181,14 @@ class TestSkipsMalformedRecords:
             (make_record(bucket=""), "missing bucket"),
             (make_record(key=""), "missing object key"),
             (make_record(metadata={}), "missing tenant id"),
+            (
+                make_record(metadata={"x-amz-meta-tenant_id": str(uuid.uuid4())}),
+                "tenant id differs from key prefix",
+            ),
+            (
+                make_record(key=f"not-a-uuid/files/2026/01/{DOCUMENT_ID}.pdf"),
+                "key prefix is not a tenant id",
+            ),
             (make_record(key="tenant/files/2026/01/not-a-uuid.pdf"), "invalid id"),
             ({"eventName": "s3:ObjectCreated:Put"}, "missing s3 section"),
         ],

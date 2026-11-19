@@ -4,7 +4,6 @@ import copy
 import uuid
 
 import pytest
-
 from src.domain.documents.dataclasses import StorageKey, StoredFile
 from src.libs.enums.document import DocumentStatus, LanguageType
 from src.libs.enums.ingestionjob import ProcessingStatus

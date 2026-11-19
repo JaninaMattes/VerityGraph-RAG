@@ -11,9 +11,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import ActivityEnvironment
-
 from src.domain.chunks.entities import ChunkDraft, ChunkingConfig
 from src.domain.documents.entities import DocumentEntity
 from src.domain.ingestions.entities import IngestionJobEntity
@@ -40,8 +37,8 @@ from src.libs.exceptions.exceptions import (
     StorageAccessDeniedException,
     StorageException,
 )
-
-pytestmark = pytest.mark.asyncio
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import ActivityEnvironment
 
 MODULE = "src.infrastructure.workflow_execution.temporalio.activities"
 DOCUMENT_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -54,6 +51,7 @@ def storage() -> MagicMock:
     return MagicMock()
 
 
+MAX_FILE_BYTES = 1_000
 CHUNKING_CONFIG = ChunkingConfig(
     component="docling-hybrid-chunker", component_version="1"
 )
@@ -76,7 +74,10 @@ def activities(
     mock_session_factory: MagicMock, storage: MagicMock, chunker: MagicMock
 ) -> IngestFileActivities:
     return IngestFileActivities(
-        session_factory=mock_session_factory, storage=storage, chunker=chunker
+        session_factory=mock_session_factory,
+        storage=storage,
+        chunker=chunker,
+        max_file_bytes=MAX_FILE_BYTES,
     )
 
 
@@ -483,7 +484,9 @@ class TestUpdateIngestionJobActivity:
 class TestProcessDocumentActivity:
     """process_document_activity downloads, chunks and stores the document."""
 
-    def payload(self, filename: str = "report.pdf") -> ProcessDocumentPayload:
+    def payload(
+        self, filename: str = "report.pdf", size_bytes: int = 1
+    ) -> ProcessDocumentPayload:
         return ProcessDocumentPayload(
             document_id=DOCUMENT_ID,
             tenant_id=TENANT_ID,
@@ -491,8 +494,40 @@ class TestProcessDocumentActivity:
             bucket="files",
             object_key=f"{TENANT_ID}/files/2026/01/{DOCUMENT_ID}.pdf",
             etag="abc",
-            size_bytes=1,
+            size_bytes=size_bytes,
         )
+
+    async def test_oversized_file_fails_before_download(
+        self, env, activities, storage, chunker
+    ):
+        """
+        GIVEN an upload event that reports more bytes than the limit
+        WHEN the activity runs
+        THEN it raises a non-retryable 'ProcessingFailure'
+        AND the file is neither downloaded nor parsed
+        """
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(
+                activities.process_document_activity,
+                self.payload(size_bytes=MAX_FILE_BYTES + 1),
+            )
+
+        assert_non_retryable(exc_info.value, "ProcessingFailure")
+        storage.download_object.assert_not_called()
+        chunker.chunk.assert_not_called()
+
+    async def test_file_at_the_limit_is_processed(self, env, activities, storage):
+        """
+        GIVEN an upload of exactly the limit (or of unknown size, -1)
+        WHEN the activity runs
+        THEN the file is downloaded and processed
+        """
+        for size in (MAX_FILE_BYTES, -1):
+            await env.run(
+                activities.process_document_activity, self.payload(size_bytes=size)
+            )
+
+        assert storage.download_object.call_count == 2
 
     async def test_download_uses_object_key_name_not_client_filename(
         self, env, activities, storage, chunk_repo

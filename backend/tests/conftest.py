@@ -5,32 +5,18 @@ services, sessions and storage clients are mocks.
 """
 
 import uuid
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl, PostgresDsn, SecretStr
-
-from src.api.dependencies import (
-    get_chunk_service,
-    get_current_tenant_id,
-    get_document_service,
-    get_settings,
-    get_tenant_service,
-    get_user_service,
-)
-from src.domain.chunks.service import ChunkService
+from src.api.dependencies import get_settings
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
-from src.domain.documents.service import DocumentService
 from src.domain.ingestions.entities import IngestionJobEntity
 from src.domain.tenants.entities import TenantEntity
-from src.domain.tenants.service import TenantService
 from src.domain.users.entities import UserEntity
-from src.domain.users.service import UserService
 from src.libs.core.config import Settings
 from src.libs.enums.document import DocumentStatus, DocumentType
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
@@ -80,7 +66,7 @@ def test_settings() -> Settings:
     return Settings(
         app_name="Graph RAG Backend",
         environment="testing",
-        secret_key=SecretStr("test-secret-key-for-ci-only-32-chars!!"),
+        secret_key=SecretStr("test-secret-key-for-unit-tests-only-" + "x" * 30),
         postgres_url=PostgresDsn("postgresql+asyncpg://test:test@localhost:5432/test"),
         minio_url="localhost:9000",
         minio_root_user=SecretStr("test-user"),
@@ -89,7 +75,6 @@ def test_settings() -> Settings:
         temporal_url="localhost:7233",
         temporal_task_queue="test-queue",
         frontend_url=HttpUrl("http://localhost:3000"),
-        dev_tenant_id="12bf3456-7d89-12d3-a456-78c91cf2b34f",
     )
 
 
@@ -163,7 +148,7 @@ def user_entity(
 
 
 # ==========================================================
-# 3. FastAPI dependency overrides
+# 3. FastAPI settings (the API fixtures are in tests/api/conftest.py)
 # ==========================================================
 
 
@@ -176,67 +161,6 @@ def override_global_dependencies(test_settings: Settings) -> Iterator[None]:
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
-async def client() -> AsyncGenerator[AsyncClient]:
-    """An in-process HTTP client for the FastAPI app."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
-
-
-@pytest.fixture
-def mock_document_service() -> AsyncMock:
-    """spec= makes the mock fail on methods that the real class does not have."""
-    return AsyncMock(spec=DocumentService)
-
-
-@pytest.fixture
-def mock_chunk_service() -> AsyncMock:
-    return AsyncMock(spec=ChunkService)
-
-
-@pytest.fixture
-def mock_tenant_service() -> AsyncMock:
-    return AsyncMock(spec=TenantService)
-
-
-@pytest.fixture
-def mock_user_service() -> AsyncMock:
-    return AsyncMock(spec=UserService)
-
-
-@pytest.fixture
-def api_overrides(
-    mock_tenant_id: uuid.UUID,
-    mock_document_service: AsyncMock,
-    mock_chunk_service: AsyncMock,
-    mock_tenant_service: AsyncMock,
-    mock_user_service: AsyncMock,
-) -> None:
-    """Replace the current tenant and all services with mocks."""
-    app.dependency_overrides[get_current_tenant_id] = lambda: mock_tenant_id
-    app.dependency_overrides[get_document_service] = lambda: mock_document_service
-    app.dependency_overrides[get_chunk_service] = lambda: mock_chunk_service
-    app.dependency_overrides[get_tenant_service] = lambda: mock_tenant_service
-    app.dependency_overrides[get_user_service] = lambda: mock_user_service
-
-
-@pytest_asyncio.fixture
-async def doc_client(api_overrides: None, client: AsyncClient) -> AsyncClient:
-    return client
-
-
-@pytest_asyncio.fixture
-async def tenant_client(api_overrides: None, client: AsyncClient) -> AsyncClient:
-    return client
-
-
-@pytest_asyncio.fixture
-async def user_client(api_overrides: None, client: AsyncClient) -> AsyncClient:
-    return client
-
-
 # ==========================================================
 # 4. Infrastructure mocks
 # ==========================================================
@@ -247,6 +171,7 @@ def mock_db_session() -> AsyncMock:
     """A mocked SQLAlchemy AsyncSession that also works as an async context manager."""
     session = AsyncMock()
     session.add = MagicMock()
+    session.add_all = MagicMock()  # synchronous on a real AsyncSession
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     return session

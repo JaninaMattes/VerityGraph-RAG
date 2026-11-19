@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 import structlog
-
 from src.libs.core.logger import get_logger, setup_logging
 
 

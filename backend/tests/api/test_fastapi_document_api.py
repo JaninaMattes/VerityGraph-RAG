@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import status
 from httpx import AsyncClient
-
 from src.domain.chunks.entities import (
     BoundingBox,
     ChunkDraft,
@@ -17,15 +16,13 @@ from src.domain.chunks.entities import (
 from src.domain.documents.dataclasses import PresignedUrl
 from src.libs.exceptions.exceptions import DocumentNotFoundException
 
-pytestmark = pytest.mark.asyncio
-
 
 class TestCreateUploadUrl:
     """POST /documents returns a presigned upload URL."""
 
     async def test_returns_201_and_presigned_url(
         self,
-        doc_client: AsyncClient,
+        api_client: AsyncClient,
         mock_document_service: AsyncMock,
         mock_tenant_id,
         mock_document_id,
@@ -43,7 +40,7 @@ class TestCreateUploadUrl:
             required_headers={"x-amz-meta-filename": mock_document_name},
         )
 
-        response = await doc_client.post(
+        response = await api_client.post(
             "/api/v1/documents",
             json={"filename": mock_document_name, "namespace": "files"},
         )
@@ -68,14 +65,14 @@ class TestCreateUploadUrl:
         ids=["empty-filename", "blank-filename", "empty-namespace", "missing-filename"],
     )
     async def test_invalid_body_returns_422(
-        self, doc_client: AsyncClient, mock_document_service: AsyncMock, payload
+        self, api_client: AsyncClient, mock_document_service: AsyncMock, payload
     ):
         """
         GIVEN a body with a missing, empty or blank required field
         WHEN POST /api/v1/documents is called
         THEN the response is 422 AND the service is not called
         """
-        response = await doc_client.post("/api/v1/documents", json=payload)
+        response = await api_client.post("/api/v1/documents", json=payload)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         mock_document_service.create_upload_url.assert_not_awaited()
@@ -86,7 +83,7 @@ class TestGetDownloadUrl:
 
     async def test_returns_200_and_presigned_url(
         self,
-        doc_client: AsyncClient,
+        api_client: AsyncClient,
         mock_document_service,
         mock_document_id,
         mock_tenant_id,
@@ -103,7 +100,7 @@ class TestGetDownloadUrl:
             required_headers={},
         )
 
-        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}")
+        response = await api_client.get(f"/api/v1/documents/{mock_document_id}")
 
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["url"].endswith("signature=xyz")
@@ -112,7 +109,7 @@ class TestGetDownloadUrl:
         )
 
     async def test_unknown_document_returns_404(
-        self, doc_client: AsyncClient, mock_document_service, mock_document_id
+        self, api_client: AsyncClient, mock_document_service, mock_document_id
     ):
         """
         GIVEN the service reports that the document does not exist
@@ -123,17 +120,17 @@ class TestGetDownloadUrl:
             mock_document_id
         )
 
-        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}")
+        response = await api_client.get(f"/api/v1/documents/{mock_document_id}")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    async def test_invalid_id_returns_422(self, doc_client: AsyncClient):
+    async def test_invalid_id_returns_422(self, api_client: AsyncClient):
         """
         GIVEN a path id that is not a UUID
         WHEN GET /api/v1/documents/{id} is called
         THEN the response is 422
         """
-        response = await doc_client.get("/api/v1/documents/not-a-uuid")
+        response = await api_client.get("/api/v1/documents/not-a-uuid")
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
@@ -143,7 +140,7 @@ class TestListChunks:
 
     async def test_returns_chunks_with_spans(
         self,
-        doc_client: AsyncClient,
+        api_client: AsyncClient,
         mock_chunk_service,
         mock_document_id,
         mock_tenant_id,
@@ -172,7 +169,7 @@ class TestListChunks:
             config=ChunkingConfig(component="docling", component_version="1"),
         )
 
-        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
+        response = await api_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
 
         assert response.status_code == status.HTTP_200_OK
         (chunk,) = response.json()
@@ -191,11 +188,66 @@ class TestListChunks:
         }
         assert "tenant_id" not in chunk
         mock_chunk_service.list_for_document.assert_awaited_once_with(
-            mock_document_id, mock_tenant_id
+            mock_document_id, mock_tenant_id, limit=100, offset=0
         )
 
+    async def test_page_is_passed_to_the_service(
+        self, api_client: AsyncClient, mock_chunk_service, mock_document_id
+    ):
+        """
+        GIVEN a limit and an offset in the query
+        WHEN GET /api/v1/documents/{id}/chunks is called
+        THEN the service returns that page
+        """
+        mock_chunk_service.list_for_document.return_value = []
+
+        response = await api_client.get(
+            f"/api/v1/documents/{mock_document_id}/chunks?limit=20&offset=40"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_chunk_service.list_for_document.call_args.kwargs == {
+            "limit": 20,
+            "offset": 40,
+        }
+
+    @pytest.mark.parametrize(
+        "query",
+        ["limit=0", "limit=501", "offset=-1", "limit=abc"],
+        ids=["zero-limit", "limit-too-large", "negative-offset", "not-a-number"],
+    )
+    async def test_invalid_page_returns_422(
+        self, api_client: AsyncClient, mock_chunk_service, mock_document_id, query
+    ):
+        """
+        GIVEN a limit outside 1..500 or a negative offset
+        WHEN GET /api/v1/documents/{id}/chunks is called
+        THEN the response is 422 AND no chunks are read
+        """
+        response = await api_client.get(
+            f"/api/v1/documents/{mock_document_id}/chunks?{query}"
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        mock_chunk_service.list_for_document.assert_not_awaited()
+
+    async def test_control_character_in_filename_returns_422(
+        self, api_client: AsyncClient, mock_document_service
+    ):
+        """
+        GIVEN a filename with a NUL character
+        WHEN POST /api/v1/documents is called
+        THEN the response is 422 AND no upload URL is created
+        """
+        response = await api_client.post(
+            "/api/v1/documents", json={"filename": "report\x00.pdf"}
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+        mock_document_service.create_upload_url.assert_not_awaited()
+
     async def test_unknown_document_returns_404(
-        self, doc_client: AsyncClient, mock_chunk_service, mock_document_id
+        self, api_client: AsyncClient, mock_chunk_service, mock_document_id
     ):
         """
         GIVEN the tenant has no such document
@@ -206,6 +258,6 @@ class TestListChunks:
             mock_document_id
         )
 
-        response = await doc_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
+        response = await api_client.get(f"/api/v1/documents/{mock_document_id}/chunks")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND

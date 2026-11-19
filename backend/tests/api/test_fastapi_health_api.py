@@ -1,14 +1,11 @@
-import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
-
 from src.api.dependencies import get_settings
 from src.libs.schemas.health import AppHealthResponse
 from src.main import app
 
 # Apply to all tests in this module
-pytestmark = pytest.mark.asyncio
 
 # ==========================================================
 # Endpoint: POST /health (receive app name)

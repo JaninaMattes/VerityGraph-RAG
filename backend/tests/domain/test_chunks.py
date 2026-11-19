@@ -4,7 +4,6 @@ import uuid
 from hashlib import sha256
 
 import pytest
-
 from src.domain.chunks.entities import (
     BoundingBox,
     ChunkDraft,

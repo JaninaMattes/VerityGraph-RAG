@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from src.domain.documents.dataclasses import DocumentChecksum
 from src.infrastructure.database.postgres.engine import create_async_db_engine
 from src.infrastructure.database.postgres.mapper.document import DocumentMapper
@@ -66,7 +65,6 @@ def request_with(session: AsyncMock) -> SimpleNamespace:
     )
 
 
-@pytest.mark.asyncio
 class TestRequestSession:
     """get_db_session is the unit of work of one HTTP request."""
 

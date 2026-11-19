@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic import command
 from alembic.config import Config
 from minio import Minio
 from sqlalchemy.ext.asyncio import (
@@ -22,8 +23,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-
-from alembic import command
 from src.libs.core.config import get_settings
 
 # The images of docker/compose.yaml, so the test runs what the stack runs.
@@ -110,12 +109,14 @@ def database_url(container: Callable[..., tuple[str, str]]) -> Iterator[str]:
     )
     # The init server does not listen on TCP, so this passes only for the real one.
     wait_until(
-        lambda: subprocess.run(
-            ["docker", "exec", container_id, "pg_isready", "-h", "127.0.0.1"],
-            check=False,
-            capture_output=True,
-        ).returncode
-        == 0,
+        lambda: (
+            subprocess.run(
+                ["docker", "exec", container_id, "pg_isready", "-h", "127.0.0.1"],
+                check=False,
+                capture_output=True,
+            ).returncode
+            == 0
+        ),
         "Postgres",
     )
     url = f"postgresql+asyncpg://postgres@{address}/e2e"
