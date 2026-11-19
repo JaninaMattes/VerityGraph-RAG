@@ -9,9 +9,10 @@
   with citations back to the source.
 </p>
 
-> **Status: learning project, early stage.** The document ingestion path works end to end.
-> Parsing, the knowledge graph, vector search and the agent are planned. See the
-> [roadmap](#roadmap).
+> **Status: learning project, early stage.** Uploaded documents are parsed and chunked
+> into PostgreSQL, with page and box evidence for every chunk. The knowledge graph, vector
+> search and the agent are planned. See the [roadmap](#roadmap) and the
+> [implementation plan](docs/implementation_plan.md).
 
 ## Contents
 
@@ -50,8 +51,9 @@ text snippet.
 | Tenants and users (CRUD API) | Works. The tenant comes from `DEV_TENANT_ID` until authentication exists |
 | Presigned upload and download URLs (MinIO) | Works |
 | Upload event → Kafka → Temporal ingestion workflow | Works. It records the document and an ingestion job |
-| Parsing, chunking, embeddings | Planned. The processing step only downloads the file |
-| Knowledge graph (Neo4j), vector search (Qdrant) | Planned |
+| Parsing and chunking (Docling) | Works. Chunks and their evidence spans (page, box, character range) are stored in PostgreSQL; `GET /api/v1/documents/{id}/chunks` returns them |
+| Provenance model (source of truth) | Schema done: chunks, spans, entities, relationships, communities, embeddings. See [docs/provenance-model.md](docs/provenance-model.md) |
+| Embeddings, knowledge graph (Neo4j), vector search (Qdrant) | Planned. Both stores will be rebuildable projections of PostgreSQL |
 | Agent (LangGraph), MCP tools, evaluation, tracing | Planned |
 | Frontend | Vite and React scaffold only |
 
@@ -69,7 +71,7 @@ Worker ──consumes event──────────▶ starts Temporal wor
 Workflow:
   1. create the document record   (status UPLOADED)
   2. create the ingestion job     (status PENDING)
-  3. process the document         (today: download only)
+  3. process the document         (download, Docling parse and chunk, store chunks + spans)
   4. mark the document PROCESSED and the job COMPLETED
      – or both FAILED, if step 3 fails
 ```
@@ -82,19 +84,21 @@ Design decisions:
   policy. Data errors are not retried; database and network faults are.
 - **At-least-once delivery.** The Kafka consumer commits an offset only after the workflow
   has started. The deterministic workflow ID makes duplicate events harmless.
-- **Ports and adapters.** The domain defines `Protocol`s for storage and repositories, and
-  the infrastructure layer implements them. Tests replace them with mocks.
+- **Ports and adapters.** The domain defines `Protocol`s for storage, chunking and
+  repositories, and the infrastructure layer implements them. Tests replace them with mocks.
+- **PostgreSQL is the source of truth.** Chunk IDs are deterministic, so a retry writes the
+  same rows. Neo4j and Qdrant will be projections that can be rebuilt from PostgreSQL.
 
 ### Built with
 
-In use: [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://www.sqlalchemy.org/)
+In use: [Docling](https://docling.ai/), [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy](https://www.sqlalchemy.org/)
 and [Alembic](https://alembic.sqlalchemy.org/) on [PostgreSQL](https://www.postgresql.org/),
 [MinIO](https://min.io/), [Apache Kafka](https://kafka.apache.org/) (KRaft) with
 [aiokafka](https://aiokafka.readthedocs.io/), [Temporal](https://temporal.io/),
 [uv](https://docs.astral.sh/uv/), [Ruff](https://docs.astral.sh/ruff/) and
 [pytest](https://pytest.org/).
 
-Planned: [Docling](https://docling.ai/), [Qdrant](https://qdrant.tech/),
+Planned: [Qdrant](https://qdrant.tech/),
 [Neo4j](https://neo4j.com/), [LangGraph](https://www.langchain.com/langgraph),
 [Qwen](https://qwen.ai/home), [React](https://react.dev/) with
 [D3.js](https://www.react-graph-gallery.com/).
@@ -138,6 +142,7 @@ Planned: [Docling](https://docling.ai/), [Qdrant](https://qdrant.tech/),
 | Service | URL or port |
 | --- | --- |
 | API (OpenAPI docs) | <http://localhost:8000/docs> |
+| API health (liveness / readiness) | <http://localhost:8000/api/v1/health/live> / `/api/v1/health/ready` |
 | Temporal Web UI | <http://localhost:8081> |
 | Kafka UI | <http://localhost:8080> |
 | MinIO console / S3 API | <http://localhost:9001> / `localhost:9000` |
@@ -173,7 +178,16 @@ Do these steps to upload a document and start the ingestion:
 
    <img src="docs/images/temporal-web-ui.png" alt="Temporal Web UI" width="100%">
 
-4. Request a download URL:
+4. Read the chunks with their evidence (page, box and character range per span):
+
+   ```sh
+   curl -s http://localhost:8000/api/v1/documents/<document_id>/chunks
+   ```
+
+   The first file takes longer: the worker downloads the Docling layout models and the
+   tokenizer into the `model-cache` volume.
+
+5. Request a download URL:
 
    ```sh
    curl -s http://localhost:8000/api/v1/documents/<document_id>
@@ -190,14 +204,21 @@ Other endpoints: `POST/GET/PATCH/DELETE /api/v1/tenants/{tenant_id}`,
 | Run the ingestion worker locally | `make worker` |
 | Lint and format check | `make lint` |
 | Tests with coverage (CI fails below 95%) | `make test` |
+| Tests against a real PostgreSQL (needs `TEST_DATABASE_URL`) | `make test-integration` |
 | Lint and tests, the same as CI | `make check` |
 | Apply database migrations | `cd backend && uv run alembic upgrade head` |
 
-When you run the API or the worker on the host, set the hosts in `backend/.env` to
+When running the API or the worker on the host, set the hosts in `backend/.env` to
 `localhost` (Kafka: `localhost:9094`).
 
-The tests need no running services. The workflow tests download the Temporal time-skipping
-test server on the first run.
+The unit tests need no running services. The workflow tests download the Temporal
+time-skipping test server on the first run. The integration tests in
+`backend/tests/integration` need an empty, disposable database in `TEST_DATABASE_URL`
+(CI starts one). They migrate it, then check the SQL, the constraints and the cascades.
+Add `DOCLING_INTEGRATION=1` to also run real Docling on a generated PDF.
+
+`make install` includes the `ingestion` extra (Docling and torch, several GB). The API
+image does not need it: the Dockerfile has a small `api` target and a `worker` target.
 
 ## Project structure
 
@@ -206,14 +227,13 @@ backend/src/
 ├── api/              # FastAPI routers and dependency providers
 ├── domain/           # Entities, value objects, services, ports (no framework imports)
 ├── infrastructure/
-│   ├── database/postgres/   # ORM models, mappers, repositories, session
+│   ├── database/postgres/   # ORM models (provenance model), mappers, repositories
+│   ├── parsing/             # Docling adapter for the chunker port
 │   ├── storage/minio/       # MinIO adapter for the storage port
 │   ├── message_broker/kafka # Event handler, consumer loop, worker entry point
 │   └── workflow_execution/temporalio/  # Ingestion workflow and activities
-├── libs/             # Settings, logging, enums, schemas, exceptions
-├── pipelines/        # Planned: loaders, chunking, embedding, graph, indexing
-└── agents/, mcp/, evaluation/, observability/   # Planned (empty)
-backend/tests/        # Mirrors src/: api, domain, infrastructure, kafka, workers
+└── libs/             # Settings, logging, enums, schemas, exceptions
+backend/tests/        # Mirrors src/; integration/ runs against a real PostgreSQL
 docker/               # Compose stack and init scripts
 frontend/             # Vite + React scaffold
 docs/                 # Documentation and images
@@ -222,7 +242,7 @@ docs/                 # Documentation and images
 ## Roadmap
 
 1. **Ingestion:** parse documents with Docling, chunk them, and store the chunks with
-   their provenance.
+   their provenance. *(Done; next: a separate task queue for parsing.)*
 2. **Retrieval:** embeddings and vector search in Qdrant.
 3. **GraphRAG:** entity and relationship extraction into Neo4j.
 4. **Agentic querying:** a LangGraph agent with MCP tools.
