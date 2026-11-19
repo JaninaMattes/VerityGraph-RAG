@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f docker/compose.yaml
 BACKEND = cd backend &&
 
-.PHONY: help install dev worker up down logs lint test test-integration check
+.PHONY: help install dev worker up down logs lint test test-integration test-e2e check
 
 help:
 	@echo "VerityGraph commands:"
@@ -46,5 +46,10 @@ test:
 # Add DOCLING_INTEGRATION=1 to also run real Docling on a PDF (downloads models).
 test-integration:
 	$(BACKEND) uv run pytest tests/integration
+
+# Upload -> MinIO event -> Temporal workflow -> real Docling -> Postgres.
+# Needs Docker; starts and removes its own Postgres and MinIO containers.
+test-e2e:
+	$(BACKEND) E2E=1 uv run pytest tests/e2e -v
 
 check: lint test
