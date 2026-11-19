@@ -8,7 +8,7 @@ from minio import Minio
 from src.libs.core.config import Settings
 from src.libs.core.logger import get_logger
 
-logger = get_logger("storage.client")
+logger = get_logger(__name__)
 
 
 def create_storage_client(settings: Settings) -> Minio:

@@ -9,14 +9,14 @@ from src.domain.documents.dataclasses import StorageKey, StoredFile
 from src.domain.documents.storage import StorageProvider
 from src.libs.core.logger import get_logger
 from src.libs.exceptions.exceptions import (
-    AccessDeniedException,
     ApplicationException,
     BucketNotFoundException,
     ObjectNotFoundException,
-    StorageOperationException,
+    StorageAccessDeniedException,
+    StorageException,
 )
 
-logger = get_logger("api.infra.minio")
+logger = get_logger(__name__)
 
 ACCESS_DENIED_CODES = ("AccessDenied", "InvalidAccessKeyId")
 METADATA_PREFIX = "x-amz-meta-"
@@ -37,15 +37,15 @@ class MinioStorage(StorageProvider):
             "MinIO failed to %s (%s): %s", action, exc.code, object_name or ""
         )
         if exc.code == "NoSuchBucket":
-            return BucketNotFoundException(bucket_name=self.bucket_name)
+            return BucketNotFoundException(self.bucket_name)
         if exc.code == "NoSuchKey" and object_name:
-            return ObjectNotFoundException(
-                storage_key=object_name, bucket_name=self.bucket_name
-            )
+            return ObjectNotFoundException(f"{self.bucket_name}/{object_name}")
         if exc.code in ACCESS_DENIED_CODES:
-            return AccessDeniedException(bucket_name=self.bucket_name)
-        return StorageOperationException(
-            self.bucket_name, description=f"Failed to {action}."
+            return StorageAccessDeniedException(
+                f"Access to bucket '{self.bucket_name}' was denied ({exc.code})."
+            )
+        return StorageException(
+            f"Failed to {action} in bucket '{self.bucket_name}' ({exc.code})."
         )
 
     def create_bucket(self) -> None:
@@ -56,6 +56,15 @@ class MinioStorage(StorageProvider):
                 logger.info("Created bucket %s.", self.bucket_name)
         except S3Error as exc:
             raise self._to_domain_error(exc, "create the bucket") from exc
+
+    def check_available(self) -> None:
+        """Raise BucketNotFoundException or a storage error if the bucket is unusable."""
+        try:
+            exists = self.client.bucket_exists(bucket_name=self.bucket_name)
+        except S3Error as exc:
+            raise self._to_domain_error(exc, "check the bucket") from exc
+        if not exists:
+            raise BucketNotFoundException(self.bucket_name)
 
     def create_presigned_url(
         self,
