@@ -1,27 +1,25 @@
 import typing
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
+from src.infrastructure.database.postgres.models.mixins import TimestampMixin
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 
 if typing.TYPE_CHECKING:
     from .document import Document
 
 
-class IngestionJob(Base):
+class IngestionJob(TimestampMixin, Base):
+    """One ingestion run of a document (one Temporal workflow run)."""
+
     __tablename__ = "ingestion_job"
 
-    job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        primary_key=True,
-        index=True,
-        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
-    )
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("document.document_id", ondelete="CASCADE"),
         index=True,
@@ -56,15 +54,6 @@ class IngestionJob(Base):
         JSONB, default=None
     )  # For state/error tracking
 
-    # Audit information
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -72,14 +61,6 @@ class IngestionJob(Base):
         Index(
             "ix_job_workflow_id",
             "workflow_id",
-        ),
-        Index(
-            "ix_job_workflow_run_id",
-            "workflow_run_id",
-        ),
-        Index(
-            "ix_job_attempt_count",
-            "attempt_count",
         ),
         Index(
             "ix_job_stage",

@@ -1,25 +1,25 @@
-# import typing
 import uuid
-from datetime import UTC, datetime
 
-from sqlalchemy import UUID, DateTime, Enum, Index, String
+from sqlalchemy import UUID, Enum, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models.document import Document
+from src.infrastructure.database.postgres.models.mixins import (
+    SoftDeleteMixin,
+    TimestampMixin,
+)
 from src.infrastructure.database.postgres.models.user import User
 from src.libs.enums.tenant import TenantStatus
 
 
-class Tenant(Base):
+class Tenant(TimestampMixin, SoftDeleteMixin, Base):
+    """An organisation. Every other row belongs to exactly one tenant."""
+
     __tablename__ = "tenant"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        primary_key=True,
-        index=True,
-        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
-    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
+
     # Relationships
     documents: Mapped[list[Document] | None] = relationship(
         back_populates="tenant",
@@ -37,31 +37,10 @@ class Tenant(Base):
         default=TenantStatus.CREATED,
     )
 
-    # Audit information
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
-
     __table_args__ = (
-        Index(
-            "ix_tenant_organisation",
-            "organisation",
-        ),
-        Index(
-            "ix_tenant_status",
-            "status",
-        ),
-        Index(
-            "ix_tenant_created_at",
-            "created_at",
-        ),
+        Index("ix_tenant_organisation", "organisation"),
+        Index("ix_tenant_status", "status"),
+        Index("ix_tenant_created_at", "created_at"),
     )
 
     def __repr__(self) -> str:

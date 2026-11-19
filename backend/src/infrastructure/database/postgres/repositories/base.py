@@ -3,8 +3,8 @@
 Rules for every repository:
 - write and flush, but never commit: the caller owns the transaction;
 - a missing row raises the entity-specific NotFoundException;
-- IntegrityError becomes DatabaseOperationException, other SQLAlchemy errors
-  become DatabaseInternalException.
+- IntegrityError becomes ConflictException, other SQLAlchemy errors
+  become DatabaseException.
 """
 
 from collections.abc import Iterator
@@ -18,25 +18,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infrastructure.database.postgres.base import Base
 from src.libs.core.logger import get_logger
 from src.libs.exceptions.exceptions import (
-    DatabaseInternalException,
-    DatabaseOperationException,
+    ConflictException,
+    DatabaseException,
     NotFoundException,
 )
 
-logger = get_logger("api.infra.postgres")
+logger = get_logger(__name__)
 
 
 @contextmanager
 def translate_db_errors(action: str) -> Iterator[None]:
-    """Translate SQLAlchemy errors raised while doing `action` to DatabaseException."""
+    """Translate SQLAlchemy errors raised while doing `action` to domain exceptions."""
     try:
         yield
     except IntegrityError as exc:
         logger.warning("Conflict while trying to %s: %s", action, exc.orig)
-        raise DatabaseOperationException(f"Conflict while trying to {action}.") from exc
+        raise ConflictException(f"Conflict while trying to {action}.") from exc
     except SQLAlchemyError as exc:
         logger.error("Database error while trying to %s: %s", action, exc)
-        raise DatabaseInternalException(f"Failed to {action}.") from exc
+        raise DatabaseException(f"Failed to {action}.") from exc
 
 
 class PostgresRepository:
@@ -65,7 +65,7 @@ class PostgresRepository:
             raise not_found
 
     async def _add(self, model: Base) -> Base:
-        """Insert a new row. A duplicate key raises DatabaseOperationException."""
+        """Insert a new row. A duplicate key raises ConflictException."""
         with translate_db_errors("insert a row"):
             self._session.add(model)
             await self._session.flush()
