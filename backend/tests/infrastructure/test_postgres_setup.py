@@ -20,6 +20,7 @@ from src.infrastructure.database.postgres.models import (
     User,
     UserCredentials,
 )
+from src.infrastructure.database.postgres.models.mixins import utcnow
 from src.infrastructure.database.postgres.session import (
     create_session_factory,
     get_db_session,
@@ -100,6 +101,21 @@ class TestRequestSession:
         mock_db_session.commit.assert_not_awaited()
 
 
+class TestAuditColumns:
+    """The audit mixin sets timezone-aware UTC timestamps."""
+
+    def test_utcnow_is_timezone_aware_utc(self):
+        """
+        GIVEN the default of created_at and updated_at
+        WHEN it is called
+        THEN it returns a time with the UTC offset 0
+        """
+        value = utcnow()
+
+        assert value.utcoffset() is not None
+        assert value.utcoffset().total_seconds() == 0
+
+
 class TestMappers:
     """Each mapper converts entity -> model -> entity without losing data."""
 
@@ -129,7 +145,7 @@ class TestMappers:
         ("model", "name"),
         [
             (Document(document_id=uuid.uuid4(), filename="a.pdf"), "Document("),
-            (DocumentChunk(chunk_id=uuid.uuid4(), chunk_index=1), "Chunk("),
+            (DocumentChunk(chunk_id=uuid.uuid4(), chunk_index=1), "DocumentChunk("),
             (IngestionJob(job_id=uuid.uuid4()), "IngestionJob("),
             (Tenant(tenant_id=uuid.uuid4(), organisation="ACME"), "Tenant("),
             (User(user_id=uuid.uuid4(), username="ada"), "User("),

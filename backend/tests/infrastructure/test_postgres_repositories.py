@@ -31,8 +31,8 @@ from src.infrastructure.database.postgres.repositories.user import (
     PostgresUserRepository,
 )
 from src.libs.exceptions.exceptions import (
-    DatabaseInternalException,
-    DatabaseOperationException,
+    ConflictException,
+    DatabaseException,
     DocumentNotFoundException,
     IngestionJobNotFoundException,
     TenantNotFoundException,
@@ -144,11 +144,11 @@ class TestGetOne:
         """
         GIVEN the database fails
         WHEN get_one is called
-        THEN DatabaseInternalException is raised
+        THEN DatabaseException is raised
         """
         mock_db_session.execute.side_effect = DB_ERROR
 
-        with pytest.raises(DatabaseInternalException):
+        with pytest.raises(DatabaseException):
             await case.repo_cls(mock_db_session).get_one(*case.keys(entity))
 
 
@@ -183,11 +183,11 @@ class TestDelete:
         """
         GIVEN the database fails
         WHEN delete is called
-        THEN DatabaseInternalException is raised
+        THEN DatabaseException is raised
         """
         mock_db_session.execute.side_effect = DB_ERROR
 
-        with pytest.raises(DatabaseInternalException):
+        with pytest.raises(DatabaseException):
             await case.repo_cls(mock_db_session).delete(*case.keys(entity))
 
 
@@ -235,11 +235,11 @@ class TestWrite:
         """
         GIVEN the database rejects the write with an integrity error (duplicate)
         WHEN create or update is called
-        THEN DatabaseOperationException is raised
+        THEN ConflictException is raised
         """
         mock_db_session.flush.side_effect = CONFLICT
 
-        with pytest.raises(DatabaseOperationException):
+        with pytest.raises(ConflictException):
             await getattr(case.repo_cls(mock_db_session), method)(entity)
 
     @pytest.mark.parametrize("method", ["create", "update"])
@@ -249,11 +249,11 @@ class TestWrite:
         """
         GIVEN the database fails during the write
         WHEN create or update is called
-        THEN DatabaseInternalException is raised
+        THEN DatabaseException is raised
         """
         mock_db_session.flush.side_effect = DB_ERROR
 
-        with pytest.raises(DatabaseInternalException):
+        with pytest.raises(DatabaseException):
             await getattr(case.repo_cls(mock_db_session), method)(entity)
 
 

@@ -116,6 +116,7 @@ class TestMain:
         AND the stop signal arrives at once
         WHEN main() runs
         THEN the Temporal worker serves the ingestion workflow and its activities
+        AND the chunker is built from the chunking settings
         AND the handler is registered for both 'ObjectCreated' event types
         AND the database engine is disposed
         """
@@ -130,6 +131,7 @@ class TestMain:
             patch(f"{MODULE}.create_async_db_engine", return_value=engine),
             patch(f"{MODULE}.create_storage_client"),
             patch(f"{MODULE}.create_storage_service"),
+            patch(f"{MODULE}.create_docling_chunker") as create_chunker,
             patch(f"{MODULE}.create_consumer"),
             patch(f"{MODULE}.Client.connect", new=AsyncMock()) as connect,
             patch(f"{MODULE}.Worker", return_value=temporal_worker) as worker_cls,
@@ -143,6 +145,11 @@ class TestMain:
         assert kwargs["task_queue"] == test_settings.temporal_task_queue
         assert kwargs["workflows"] == [worker.DocumentIngestionWorkflow]
         assert len(kwargs["activities"]) == 5
+        create_chunker.assert_called_once_with(
+            tokenizer_model=test_settings.chunk_tokenizer_model,
+            max_tokens=test_settings.chunk_max_tokens,
+            do_ocr=test_settings.docling_do_ocr,
+        )
         registered = [call.args[0] for call in manager.register_handler.call_args_list]
         assert registered == list(worker.EVENT_TYPES)
         engine.dispose.assert_awaited_once()

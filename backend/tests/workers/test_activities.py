@@ -14,6 +14,7 @@ import pytest
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
+from src.domain.chunks.entities import ChunkDraft, ChunkingConfig
 from src.domain.documents.entities import DocumentEntity
 from src.domain.ingestions.entities import IngestionJobEntity
 from src.infrastructure.workflow_execution.temporalio.activities import (
@@ -30,12 +31,14 @@ from src.libs.enums.document import DocumentStatus, DocumentType
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 from src.libs.enums.storage import StorageType
 from src.libs.exceptions.exceptions import (
-    AccessDeniedException,
-    DatabaseInternalException,
+    ConflictException,
+    DatabaseException,
     DocumentNotFoundException,
+    DocumentParsingException,
     IngestionJobNotFoundException,
     ObjectNotFoundException,
-    StorageOperationException,
+    StorageAccessDeniedException,
+    StorageException,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -51,11 +54,30 @@ def storage() -> MagicMock:
     return MagicMock()
 
 
+CHUNKING_CONFIG = ChunkingConfig(
+    component="docling-hybrid-chunker", component_version="1"
+)
+
+
+@pytest.fixture
+def chunker() -> MagicMock:
+    """A chunker that finds two chunks in every file."""
+    chunker = MagicMock()
+    chunker.config = CHUNKING_CONFIG
+    chunker.chunk.return_value = [
+        ChunkDraft(content="Acme invests in Globex.", token_count=5),
+        ChunkDraft(content="Risk factors.", token_count=2),
+    ]
+    return chunker
+
+
 @pytest.fixture
 def activities(
-    mock_session_factory: MagicMock, storage: MagicMock
+    mock_session_factory: MagicMock, storage: MagicMock, chunker: MagicMock
 ) -> IngestFileActivities:
-    return IngestFileActivities(session_factory=mock_session_factory, storage=storage)
+    return IngestFileActivities(
+        session_factory=mock_session_factory, storage=storage, chunker=chunker
+    )
 
 
 @pytest.fixture
@@ -67,6 +89,13 @@ def env() -> ActivityEnvironment:
 def doc_repo() -> Iterator[AsyncMock]:
     repo = AsyncMock()
     with patch(f"{MODULE}.PostgresDocumentRepository", return_value=repo):
+        yield repo
+
+
+@pytest.fixture
+def chunk_repo() -> Iterator[AsyncMock]:
+    repo = AsyncMock()
+    with patch(f"{MODULE}.PostgresChunkRepository", return_value=repo):
         yield repo
 
 
@@ -149,7 +178,7 @@ class TestCreateDocumentActivity:
         WHEN the activity runs
         THEN it raises a retryable 'DatabaseFailure'
         """
-        doc_repo.create.side_effect = DatabaseInternalException("db down")
+        doc_repo.create.side_effect = DatabaseException("db down")
 
         with pytest.raises(ApplicationError) as exc_info:
             await env.run(
@@ -254,6 +283,25 @@ class TestUpdateDocumentActivity:
         mock_db_session.commit.assert_not_awaited()
 
 
+class TestConflictClassification:
+    """A conflict (duplicate key) cannot be fixed by a retry."""
+
+    async def test_conflict_is_non_retryable(self, env, activities, doc_repo):
+        """
+        GIVEN the repository rejects the write as a conflict
+        WHEN the activity runs
+        THEN it raises a non-retryable 'Conflict'
+        """
+        doc_repo.create.side_effect = ConflictException("duplicate key")
+
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(
+                activities.create_document_activity, create_document_payload()
+            )
+
+        assert_non_retryable(exc_info.value, "Conflict")
+
+
 class TestCreateIngestionJobActivity:
     """create_ingestion_job_activity stores a new job record."""
 
@@ -303,7 +351,7 @@ class TestCreateIngestionJobActivity:
         WHEN the activity runs
         THEN it raises a retryable error
         """
-        job_repo.create.side_effect = DatabaseInternalException("db down")
+        job_repo.create.side_effect = DatabaseException("db down")
 
         with pytest.raises(ApplicationError) as exc_info:
             await env.run(activities.create_ingestion_job_activity, self.payload())
@@ -377,6 +425,27 @@ class TestUpdateIngestionJobActivity:
 
         assert job_repo.update.call_args.args[0].status is ProcessingStatus.RUNNING
 
+    async def test_running_job_records_its_stage(
+        self, env, activities, job_repo, job_entity
+    ):
+        """
+        GIVEN an existing job
+        WHEN the activity runs with status RUNNING and stage CHUNKING
+        THEN the job is RUNNING in stage CHUNKING
+        """
+        job_repo.get_one.return_value = job_entity
+        payload = self.payload("RUNNING").model_copy(
+            update={"current_stage": "CHUNKING"}
+        )
+
+        await env.run(activities.update_ingestion_job_activity, payload)
+
+        saved: IngestionJobEntity = job_repo.update.call_args.args[0]
+        assert (saved.status, saved.current_stage) == (
+            ProcessingStatus.RUNNING,
+            IngestionStage.CHUNKING,
+        )
+
     async def test_invalid_status_is_non_retryable(
         self, env, activities, job_repo, job_entity
     ):
@@ -412,11 +481,12 @@ class TestUpdateIngestionJobActivity:
 
 
 class TestProcessDocumentActivity:
-    """process_document_activity downloads the object to a safe temporary path."""
+    """process_document_activity downloads, chunks and stores the document."""
 
     def payload(self, filename: str = "report.pdf") -> ProcessDocumentPayload:
         return ProcessDocumentPayload(
             document_id=DOCUMENT_ID,
+            tenant_id=TENANT_ID,
             filename=filename,
             bucket="files",
             object_key=f"{TENANT_ID}/files/2026/01/{DOCUMENT_ID}.pdf",
@@ -425,7 +495,7 @@ class TestProcessDocumentActivity:
         )
 
     async def test_download_uses_object_key_name_not_client_filename(
-        self, env, activities, storage
+        self, env, activities, storage, chunk_repo
     ):
         """
         GIVEN a client filename that tries a path traversal ('../../evil.pdf')
@@ -449,8 +519,8 @@ class TestProcessDocumentActivity:
     @pytest.mark.parametrize(
         "error",
         [
-            ObjectNotFoundException("key", "files"),
-            AccessDeniedException("files"),
+            ObjectNotFoundException("files/key"),
+            StorageAccessDeniedException("files"),
             FileNotFoundError("gone"),
         ],
         ids=["missing-object", "access-denied", "missing-file"],
@@ -476,12 +546,68 @@ class TestProcessDocumentActivity:
         WHEN the activity runs
         THEN it raises a retryable 'ProcessingFailure'
         """
-        storage.download_object.side_effect = StorageOperationException(
-            "files", "timeout"
-        )
+        storage.download_object.side_effect = StorageException("timeout")
 
         with pytest.raises(ApplicationError) as exc_info:
             await env.run(activities.process_document_activity, self.payload())
 
         assert_retryable(exc_info.value)
         assert exc_info.value.type == "ProcessingFailure"
+
+    async def test_chunks_are_stored_and_committed(
+        self, env, activities, storage, chunker, chunk_repo, mock_db_session
+    ):
+        """
+        GIVEN a file in which the chunker finds two chunks
+        WHEN the activity runs
+        THEN the downloaded file is chunked
+        AND both chunks replace the old chunks of the document in one commit
+        AND the result reports two processed chunks
+        """
+        result = await env.run(activities.process_document_activity, self.payload())
+
+        (local_path,) = chunker.chunk.call_args.args
+        assert str(local_path) == storage.download_object.call_args.args[2]
+        document_id, tenant_id, config, chunks = (
+            chunk_repo.replace_for_document.await_args.args
+        )
+        assert (str(document_id), str(tenant_id)) == (DOCUMENT_ID, TENANT_ID)
+        assert config == CHUNKING_CONFIG
+        assert [c.content for c in chunks] == [
+            "Acme invests in Globex.",
+            "Risk factors.",
+        ]
+        mock_db_session.commit.assert_awaited_once()
+        assert result.chunks_processed == 2
+
+    async def test_parsing_error_is_non_retryable(
+        self, env, activities, chunker, chunk_repo
+    ):
+        """
+        GIVEN the file cannot be parsed (corrupt or unsupported format)
+        WHEN the activity runs
+        THEN it raises a non-retryable 'ProcessingFailure' AND stores nothing
+        """
+        chunker.chunk.side_effect = DocumentParsingException("corrupt file")
+
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(activities.process_document_activity, self.payload())
+
+        assert_non_retryable(exc_info.value, "ProcessingFailure")
+        chunk_repo.replace_for_document.assert_not_awaited()
+
+    async def test_database_error_while_storing_is_retryable(
+        self, env, activities, chunk_repo, mock_db_session
+    ):
+        """
+        GIVEN the database fails while the chunks are stored
+        WHEN the activity runs
+        THEN it raises a retryable 'ProcessingFailure' AND nothing is committed
+        """
+        chunk_repo.replace_for_document.side_effect = DatabaseException("down")
+
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(activities.process_document_activity, self.payload())
+
+        assert_retryable(exc_info.value)
+        mock_db_session.commit.assert_not_awaited()

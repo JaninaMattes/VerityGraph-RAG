@@ -78,7 +78,8 @@ class FakeActivities:
         return [name for name, _ in self.calls]
 
     def payload(self, name: str) -> Any:
-        return next(payload for call, payload in self.calls if call == name)
+        """Return the payload of the last call of activity `name`."""
+        return [payload for call, payload in self.calls if call == name][-1]
 
 
 def ingestion_payload() -> dict[str, Any]:
@@ -145,10 +146,17 @@ class TestSuccessfulIngestion:
         assert fakes.names() == [
             "create_document",
             "create_job",
+            "update_job",
             "process",
             "update_document",
             "update_job",
         ]
+        stage_update = next(p for name, p in fakes.calls if name == "update_job")
+        assert (stage_update.status, stage_update.current_stage) == (
+            "RUNNING",
+            "CHUNKING",
+        )
+        assert fakes.payload("process").tenant_id == TENANT_ID
         created = fakes.payload("create_document")
         assert created.status == "UPLOADED"
         assert created.storage_type == "MINIO"

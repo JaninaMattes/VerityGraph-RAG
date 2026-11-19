@@ -10,7 +10,7 @@ from httpx import AsyncClient
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.libs.enums.tenant import TenantStatus
 from src.libs.exceptions.exceptions import (
-    DatabaseInternalException,
+    DatabaseException,
     TenantNotFoundException,
 )
 
@@ -121,7 +121,7 @@ class TestReadTenant:
         WHEN GET /api/v1/tenants/{id} is called
         THEN the response is 500 with the database error body
         """
-        mock_tenant_service.get.side_effect = DatabaseInternalException("db down")
+        mock_tenant_service.get.side_effect = DatabaseException("db down")
 
         response = await tenant_client.get(f"/api/v1/tenants/{mock_tenant_id}")
 
