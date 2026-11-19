@@ -8,7 +8,7 @@ import uuid
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import func, select
+from sqlalchemy import Enum, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from src.domain.chunks.entities import (
     ChunkSpan,
     build_chunks,
 )
+from src.infrastructure.database.postgres.base import Base
 from src.infrastructure.database.postgres.models import (
     Document,
     DocumentChunk,
@@ -100,6 +101,32 @@ class TestMigrations:
         command.upgrade(migrated, "head")
 
         command.check(migrated)
+
+    async def test_native_enums_hold_every_model_value(self, session: AsyncSession):
+        """
+        GIVEN a database migrated to the newest revision
+        WHEN the values of each native enum type are read from Postgres
+        THEN they are exactly the values of the model enum
+            (Alembic's check does not compare enum values)
+        """
+        rows = await session.execute(
+            text(
+                "SELECT t.typname, e.enumlabel FROM pg_type t"
+                " JOIN pg_enum e ON e.enumtypid = t.oid"
+            )
+        )
+        in_database: dict[str, set[str]] = {}
+        for type_name, label in rows:
+            in_database.setdefault(type_name, set()).add(label)
+
+        in_models = {
+            column.type.name: set(column.type.enums)
+            for table in Base.metadata.tables.values()
+            for column in table.columns
+            if isinstance(column.type, Enum) and column.type.native_enum
+        }
+        assert in_models
+        assert {name: in_database.get(name) for name in in_models} == in_models
 
 
 class TestChunkStorage:
