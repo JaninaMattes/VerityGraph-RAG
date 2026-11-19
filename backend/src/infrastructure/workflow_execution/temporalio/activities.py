@@ -107,10 +107,13 @@ class IngestFileActivities:
         session_factory: async_sessionmaker[AsyncSession],
         storage: StorageProvider,
         chunker: DocumentChunker,
+        *,
+        max_file_bytes: int,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
         self._chunker = chunker
+        self._max_file_bytes = max_file_bytes
 
     @activity.defn(name="create_document_activity")
     async def create_document_activity(self, payload: CreateDocumentPayload) -> None:
@@ -210,12 +213,19 @@ class IngestFileActivities:
         The local file name comes from the server-generated object key, never from the
         client filename, so a name like '../../x' cannot escape the directory.
         The chunks replace earlier chunks of the document, so a retry is safe.
-        Missing objects, missing files, denied access and unreadable files are
-        non-retryable; database and network faults are retryable.
+        A file larger than `max_file_bytes` (as the upload event reports) fails
+        before the download. Missing objects, missing files, denied access, too
+        large and unreadable files are non-retryable; database and network faults
+        are retryable.
         """
         activity.logger.info("Processing document %s.", payload.document_id)
         document_id, tenant_id = UUID(payload.document_id), UUID(payload.tenant_id)
         try:
+            if payload.size_bytes > self._max_file_bytes:
+                raise DocumentParsingException(
+                    f"The file has {payload.size_bytes} bytes; "
+                    f"the limit is {self._max_file_bytes}."
+                )
             with tempfile.TemporaryDirectory() as temp_dir:
                 local_path = Path(temp_dir) / PurePosixPath(payload.object_key).name
                 await asyncio.to_thread(

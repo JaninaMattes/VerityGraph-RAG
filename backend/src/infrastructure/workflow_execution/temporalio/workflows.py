@@ -27,6 +27,17 @@ with workflow.unsafe.imports_passed_through():
     )
 
 DB_ACTIVITY_TIMEOUT = timedelta(seconds=30)
+
+
+def processing_task_queue(task_queue: str) -> str:
+    """Return the task queue of the parsing activity for a workflow's `task_queue`.
+
+    Parsing is slow and memory-heavy, so its own queue lets a worker limit how many
+    files it parses at once without blocking the short database activities.
+    """
+    return f"{task_queue}-processing"
+
+
 PROCESSING_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(minutes=1), maximum_attempts=5, backoff_coefficient=2.0
 )
@@ -94,8 +105,10 @@ class DocumentIngestionWorkflow:
                     size_bytes=payload.size_bytes,
                     mime_type=payload.mime_type,
                 ),
+                task_queue=processing_task_queue(workflow.info().task_queue),
                 retry_policy=PROCESSING_RETRY_POLICY,
-                schedule_to_close_timeout=timedelta(minutes=30),
+                # No schedule-to-close deadline: in a backlog the activity waits in
+                # its queue instead of failing; each attempt is still limited.
                 start_to_close_timeout=timedelta(minutes=15),
             )
         except ActivityError as exc:
