@@ -1,37 +1,75 @@
-# src/utils/logger.py
-# custom structlog setup
+"""Structured logging for the API and the worker.
+
+All records, from structlog loggers and from standard-library loggers (uvicorn,
+SQLAlchemy, Temporal, aiokafka), go through one handler on the root logger:
+- JSON lines (one object per record) outside development;
+- readable, coloured console lines in development.
+
+Values bound with structlog.contextvars.bind_contextvars (for example the request id)
+are added to every record of the current request or task.
+"""
 
 import logging
-from typing import Any
+import sys
 
 import structlog
 
+UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
-def setup_logging(log_level: str = "INFO") -> None:
-    """Configures centralized structured logging for the entire ASGI application."""
+# Processors that run for structlog records and for standard-library records.
+_SHARED_PROCESSORS: list[structlog.typing.Processor] = [
+    structlog.contextvars.merge_contextvars,
+    structlog.stdlib.add_log_level,
+    structlog.stdlib.add_logger_name,
+    structlog.stdlib.PositionalArgumentsFormatter(),
+    structlog.processors.TimeStamper(fmt="iso", utc=True),
+    structlog.processors.StackInfoRenderer(),
+]
 
-    processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,  # Thread-safe context sharing
-        structlog.processors.add_log_level,  # Adds "level": "info"
-        structlog.processors.TimeStamper(fmt="iso"),  # ISO timestamps
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,  # Extracts and formats exception info
-        structlog.processors.JSONRenderer(),  # Converts log entries into JSON format
-    ]
 
-    # Configure structlogger
+def setup_logging(level: str = "INFO", json_logs: bool = True) -> None:
+    """Configure logging for the whole process. Safe to call more than once.
+
+    `level` is a standard level name (case-insensitive). Records below it are dropped.
+    """
     structlog.configure(
-        processors=processors,
-        logger_factory=structlog.PrintLoggerFactory(),
+        processors=[
+            structlog.stdlib.filter_by_level,
+            *_SHARED_PROCESSORS,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
-    # Configure the root logger
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+
+    renderer: list[structlog.typing.Processor] = (
+        [structlog.processors.format_exc_info, structlog.processors.JSONRenderer()]
+        if json_logs
+        else [structlog.dev.ConsoleRenderer()]
     )
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            foreign_pre_chain=_SHARED_PROCESSORS,
+            processors=[
+                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                *renderer,
+            ],
+        )
+    )
+
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(level.upper())
+
+    # Uvicorn installs its own handlers; route its records through the shared handler.
+    for name in UVICORN_LOGGERS:
+        uvicorn_logger = logging.getLogger(name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Returns a named structured logger instance for a package module."""
-    return structlog.get_logger(name)
+    """Return a structured logger. Pass `__name__` so that records name their module."""
+    return structlog.stdlib.get_logger(name)

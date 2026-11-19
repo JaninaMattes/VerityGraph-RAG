@@ -82,10 +82,25 @@ class Settings(BaseSettings):
     temporal_task_queue: str
 
     # ---------------------------------------------------------
+    # Chunking (ingestion worker)
+    # ---------------------------------------------------------
+
+    # Use the tokenizer of the embedding model, so no chunk exceeds its input size.
+    chunk_tokenizer_model: str = "BAAI/bge-small-en-v1.5"
+    chunk_max_tokens: int = Field(default=512, gt=0)
+    # OCR is slow; digital PDFs (for example SEC filings) have a text layer.
+    docling_do_ocr: bool = False
+
+    # ---------------------------------------------------------
     # Frontend
     # ---------------------------------------------------------
 
     frontend_url: HttpUrl
+
+    @property
+    def log_json(self) -> bool:
+        """Log JSON lines everywhere except in development (readable console lines)."""
+        return self.environment != "development"
 
 
 @lru_cache
