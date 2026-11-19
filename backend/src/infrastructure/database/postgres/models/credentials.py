@@ -22,7 +22,7 @@ from src.infrastructure.database.postgres.models.mixins import (
 from src.libs.enums.credentials import CredentialStatus
 
 if typing.TYPE_CHECKING:
-    from .user import User  # noqa: TC004
+    from .user import User
 
 
 class UserCredentials(TimestampMixin, SoftDeleteMixin, Base):
