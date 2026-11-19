@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f docker/compose.yaml
 BACKEND = cd backend &&
 
-.PHONY: help install dev worker up down logs lint test check
+.PHONY: help install dev worker up down logs lint test test-integration check
 
 help:
 	@echo "VerityGraph commands:"
@@ -14,10 +14,11 @@ help:
 	@echo "  make logs     - Follow the logs of the Docker stack"
 	@echo "  make lint     - Ruff lint and format check"
 	@echo "  make test     - Tests with coverage"
+	@echo "  make test-integration - Tests against a real Postgres (TEST_DATABASE_URL)"
 	@echo "  make check    - lint + test (the same checks as CI)"
 
 install:
-	$(BACKEND) uv sync --locked
+	$(BACKEND) uv sync --locked --extra ingestion
 
 dev:
 	$(BACKEND) uv run fastapi dev src/main.py
@@ -39,5 +40,11 @@ lint:
 
 test:
 	$(BACKEND) uv run pytest tests --cov --cov-fail-under=95
+
+# Needs an empty, disposable database, for example:
+#   TEST_DATABASE_URL=postgresql+asyncpg://postgres@localhost:5432/test make test-integration
+# Add DOCLING_INTEGRATION=1 to also run real Docling on a PDF (downloads models).
+test-integration:
+	$(BACKEND) uv run pytest tests/integration
 
 check: lint test
