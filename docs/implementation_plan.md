@@ -22,7 +22,7 @@ multi-region deployment, Slack integration, fine-tuning models.
 - every answer claim links to at least one evidence span, or carries the label "inferred";
 - retrieval and answer quality are measured on a fixed evaluation set, and they improve
   from phase to phase;
-- the demo runs on free-tier services.
+- the demo runs mainly on free-tier services.
 
 ## 2. Where we are today
 
@@ -31,16 +31,16 @@ multi-region deployment, Slack integration, fine-tuning models.
 | Tenants, users (CRUD) | Works. No authentication. The tenant comes from `DEV_TENANT_ID` |
 | Presigned upload and download (MinIO) | Works. Object keys are `tenant/namespace/yyyy/mm/document_id` |
 | MinIO → Kafka → Temporal workflow | Works. Idempotent: workflow ID `ingestion-job-<document_id>`, `ALLOW_DUPLICATE_FAILED_ONLY` |
-| Document processing | Downloads the file only. `chunks_processed=0` |
-| Data model | `documents`, `ingestion_jobs` (with `current_stage`), `document_chunks` (with `source_locator`, `chunk_hash`, `qdrant_point_id`, `neo4j_node_id`), `users`, `user_credentials`, `tenants` |
-| Tests and CI | Unit tests with ≥ 95 % coverage gate, Ruff. Backend only |
-| Deploy workflow | Placeholder named "Deploy Backend to AWS" |
+| Document processing | Docling parses and chunks the file. Chunks and their page/box spans are stored in Postgres |
+| Data model | The provenance model ([provenance-model.md](provenance-model.md)): chunks, spans, pipeline configs, entities, relationships, communities, embeddings |
+| Tests and CI | Unit tests and Postgres integration tests (coverage gate ≥ 95 %), Ruff, frontend lint and build |
+| Deploy workflow | Builds the API image and pushes it to GHCR after CI passes on `main` |
 | Frontend | Vite + React 19 scaffold, not connected |
 | Agents, MCP, evaluation, observability, pipelines | Empty placeholder packages |
 
 ## 3. Target architecture: principles
 
-The diagram shows the full vision. Build it in this order and with these rules:
+The diagram shows the full vision. The plan is to bild it in this order and with these rules:
 
 1. **Postgres is the system of record.** Documents, chunks, evidence spans and jobs live
    there. Neo4j and the vector index are *derived* and can always be rebuilt from Postgres
@@ -48,11 +48,11 @@ The diagram shows the full vision. Build it in this order and with these rules:
 2. **Pass IDs, not bytes.** Temporal payloads hold IDs and object keys only (Temporal limits
    payloads to about 2 MB). Large artefacts, such as parsed documents, go to MinIO.
 3. **Every pipeline step is an idempotent activity**, keyed by `document_id` or
-   `chunk_hash`. You can re-run a step after you change its code.
+   `chunk_hash`. One can re-run a step after changes in code are made.
 4. **Add a component only for a measured need.** The diagram has about 15 services. Each new
-   service costs memory, money and operations time.
-5. **Every adapter sits behind a port** (`Protocol` in `domain/`). That way you can swap
-   local and cloud services (MinIO ↔ R2, Kafka ↔ webhook, Ollama ↔ hosted LLM).
+   service costs memory, money and operations time, which needs to be analysed conservatively.
+5. **Every adapter sits behind a port** (`Protocol` in `domain/`). That way any 
+   local and cloud services (MinIO ↔ R2, Kafka ↔ webhook, Ollama ↔ hosted LLM) can be simply swapped later.
 
 ### Component decisions
 
@@ -72,17 +72,18 @@ The diagram shows the full vision. Build it in this order and with these rules:
 
 ## 4. Knowledge and provenance model
 
-This model is the "Verity" in VerityGraph. Define it before Phase 1 adds chunks.
+This model is the "Verity" in VerityGraph. The full definition, with the table list and
+the rebuild of Neo4j and Qdrant, is in [provenance-model.md](provenance-model.md).
 
 ```text
-Document ─1:n─ Chunk ─1:n─ EvidenceSpan(page, bbox, char_start, char_end, text)
-Chunk ─n:m─ Entity            (MENTIONS, with the evidence span)
-Entity ─[RELATION {type, confidence, evidence: [chunk_id…], extractor, prompt_version}]→ Entity
-Answer ─1:n─ Claim(text, kind: SOURCE | INFERRED, evidence: [span_id…])
+Document ─1:n─ Chunk ─1:n─ ChunkSpan(page, bbox, char_start, char_end, source_ref)
+Chunk ─n:m─ Entity            (entity_mention, with the character range)
+Entity ─[entity_relationship {type, weight}]→ Entity, supported by relationship_evidence → Chunk
+Answer ─1:n─ Claim(text, kind: SOURCE | INFERRED, evidence: [chunk_id…])   (Phase 4)
 ```
 
-- `source_locator` on `document_chunks` gets a fixed schema: `page`, `bbox`, `char_start`
-  and `char_end`. The frontend needs it to highlight the source.
+- Each chunk has typed spans (`chunk_span`) with page, box and character range. The
+  frontend uses them to highlight the source.
 - Every graph edge stores the chunks that support it. An edge without evidence is not
   written.
 - The answer composer may cite only evidence IDs that retrieval returned. The code checks
@@ -93,19 +94,19 @@ Answer ─1:n─ Claim(text, kind: SOURCE | INFERRED, evidence: [span_id…])
 Ordered by priority. Each item is small.
 
 **Code health**
-- [ ] Merge the refactor on the local branch `wip/claude-refactor` as its own pull request,
-      after review: one exception hierarchy and handler table, `LOG_LEVEL` that really
+- [x] Apply the refactor of the local branch `wip/claude-refactor` (on
+      `phase-1/provenance-model`): one exception hierarchy and handler table, `LOG_LEVEL` that really
       filters, JSON logs, worker logging, request-ID middleware, 409 for duplicates, CORS
       for the frontend.
-- [ ] Remove the empty placeholder packages (`agents/`, `mcp/`, `evaluation/`,
+- [x] Remove the empty placeholder packages (`agents/`, `mcp/`, `evaluation/`,
       `observability/`, `pipelines/`, `infrastructure/models/`, `neo4j/`, `qdrant/`). Create
       each one when its phase starts.
-- [ ] Replace `temporalio[langgraph]` with `temporalio`. Add `langgraph` in Phase 4.
-- [ ] Fix the image build. The current `.dockerignore` files have no effect, because the
+- [x] Replace `temporalio[langgraph]` with `temporalio`. Add `langgraph` in Phase 4.
+- [x] Fix the image build. The current `.dockerignore` files have no effect, because the
       build context is the repository root. Run as a non-root user. Read `PORT` for Render.
 
 **Operability**
-- [ ] Add `GET /health/live` (process up) and `GET /health/ready` (Postgres and MinIO
+- [x] Add `GET /health/live` (process up) and `GET /health/ready` (Postgres and MinIO
       reachable). Use them in the Compose health checks and on the hosting platform.
 - [ ] Kafka poison messages: define a policy and test it (log and skip, or a dead-letter
       topic). Today there is none.
@@ -113,10 +114,10 @@ Ordered by priority. Each item is small.
       `current_stage`.
 
 **Data model (before more migrations)**
-- [ ] Make `users.email` unique per tenant (`UNIQUE (tenant_id, email)`), not unique
+- [x] Make `users.email` unique per tenant (`UNIQUE (tenant_id, email)`), not unique
       globally.
-- [ ] Add `tenant_id` to `document_chunks`, for direct tenant filters in every store.
-- [ ] Fix the `source_locator` schema (section 4) as a Pydantic model.
+- [x] Add `tenant_id` to `document_chunk`, for direct tenant filters in every store.
+- [x] Replace the free-form `source_locator` with the typed `chunk_span` table (section 4).
 - [ ] Deduplicate by content: the same `checksum` in the same tenant → reuse the chunks.
 
 **Security baseline**
@@ -124,14 +125,14 @@ Ordered by priority. Each item is small.
       `ENVIRONMENT=development`.
 
 **CI/CD**
-- [ ] Replace the AWS placeholder deploy workflow. Build the backend image on `main` and
+- [x] Replace the AWS placeholder deploy workflow. Build the backend image on `main` and
       push it to GHCR.
-- [ ] Add a frontend job: `npm ci`, `oxlint`, `tsc -b`, `vite build`.
-- [ ] Add `.github/dependabot.yml` with grouped weekly updates (uv, npm, GitHub Actions).
+- [x] Add a frontend job: `npm ci`, `oxlint`, `tsc -b`, `vite build`.
+- [x] Add `.github/dependabot.yml` with grouped weekly updates (uv, npm, GitHub Actions).
 - [ ] Protect `main`: require the test check and a pull request.
 
 **Documentation**
-- [ ] Create `docs/adr/`. Record the decisions in section 9 as you make them.
+- [ ] Create `docs/adr/`. Record the decisions in section 9 as they are made.
 
 ## 6. Roadmap
 
@@ -141,10 +142,12 @@ Each phase ends with a demo, tests, and an updated evaluation result.
 - [x] Presigned upload, MinIO event, Kafka, Temporal workflow, document and job records
 - [ ] `parse_document` activity: Docling → `DoclingDocument` JSON in MinIO
       (`parsed/<document_id>.json`). Start with PDF; add DOCX, PPTX and XLSX later
-- [ ] Separate Temporal task queue and worker image for parsing (Docling is CPU- and
-      memory-heavy). The API image stays small
-- [ ] `chunk_document` activity: Docling `HybridChunker` (structure- and token-aware) →
-      `document_chunks` with `source_locator` and `chunk_hash`
+- [x] Separate worker image for parsing (Docling is CPU- and memory-heavy). The API
+      image stays small (Dockerfile targets `api` and `worker`)
+- [ ] Separate Temporal task queue for parsing, so heavy files do not block short
+      activities
+- [x] Chunking in `process_document_activity`: Docling `HybridChunker` (structure- and
+      token-aware) → `document_chunk` and `chunk_span` in one transaction, idempotent
 - [ ] Update `current_stage` after each activity
 - [ ] Frontend: upload page (presigned PUT) and a document list with status polling
 - **Exit:** upload a 10-K PDF → `GET /documents/{id}/chunks` returns chunks with page and
