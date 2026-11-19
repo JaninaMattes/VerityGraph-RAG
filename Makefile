@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f docker/compose.yaml
 BACKEND = cd backend &&
 
-.PHONY: help install dev worker up down logs lint test test-integration test-e2e check create-admin
+.PHONY: help install dev worker up down logs lint test test-integration test-e2e check create-admin seed-demo
 
 help:
 	@echo "VerityGraph commands:"
@@ -17,6 +17,7 @@ help:
 	@echo "  make test-integration - Tests against a real Postgres (TEST_DATABASE_URL)"
 	@echo "  make test-e2e - Upload-to-chunks test with real services in Docker"
 	@echo "  make create-admin ORG=.. ADMIN_USERNAME=.. ADMIN_EMAIL=.. - First tenant admin"
+	@echo "  make seed-demo - Demo tenant with an admin and a member (development only)"
 	@echo "  make check    - lint + test (the same checks as CI)"
 
 install:
@@ -59,5 +60,10 @@ test-e2e:
 create-admin:
 	$(BACKEND) uv run python -m src.cli create-admin \
 		--organisation "$(ORG)" --username "$(ADMIN_USERNAME)" --email "$(ADMIN_EMAIL)"
+
+# Create a demo tenant with an admin and a member. Their random passwords are
+# printed once. Refused when ENVIRONMENT=production.
+seed-demo:
+	$(BACKEND) uv run python -m src.cli seed-demo
 
 check: lint test
