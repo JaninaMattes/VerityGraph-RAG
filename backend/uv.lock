@@ -3,10 +3,10 @@ revision = 5
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'linux'",
+    "python_full_version < '3.15' and sys_platform == 'linux'",
     "python_full_version >= '3.15' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.15' and sys_platform == 'linux'",
     "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
@@ -3303,7 +3303,6 @@ dependencies = [
     { name = "aiokafka" },
     { name = "alembic" },
     { name = "asyncpg" },
-    { name = "docling" },
     { name = "fastapi", extra = ["all", "standard"] },
     { name = "minio" },
     { name = "pydantic", extra = ["email"] },
@@ -3338,7 +3337,6 @@ requires-dist = [
     { name = "aiokafka", specifier = ">=0.14.0" },
     { name = "alembic", specifier = ">=1.18.5" },
     { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "docling", specifier = ">=2.150.1" },
     { name = "docling", marker = "extra == 'ingestion'", specifier = ">=2.150.0" },
     { name = "fastapi", extras = ["all", "standard"], specifier = ">=0.139.0" },
     { name = "minio", specifier = ">=7.2.20" },

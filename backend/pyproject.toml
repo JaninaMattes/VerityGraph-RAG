@@ -16,7 +16,6 @@ dependencies = [
     "structlog>=26.1.0",
     "temporalio>=1.30.0",
     "uvicorn>=0.52.4",
-    "docling>=2.150.1",
 ]
 
 [project.optional-dependencies]
