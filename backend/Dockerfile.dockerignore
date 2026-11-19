@@ -1,0 +1,10 @@
+# Allowlist for the backend image build (context: repository root).
+# Everything is ignored except the files that the Dockerfile copies.
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/alembic.ini
+!backend/alembic/
+!backend/src/
+**/__pycache__
+**/*.pyc
