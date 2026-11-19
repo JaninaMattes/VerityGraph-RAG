@@ -1,48 +1,56 @@
+"""FastAPI application: settings, logging, middleware, error handlers and routers.
+
+Run it with `uvicorn src.main:app`. The database engine is created at startup and
+disposed at shutdown (lifespan).
+"""
+
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 from src.api.routers import document, health, tenant, user
-from src.infrastructure.database.postgres.engine import (
-    create_async_db_engine,
-)
+from src.infrastructure.database.postgres.engine import create_async_db_engine
 from src.infrastructure.database.postgres.session import create_session_factory
 from src.libs.core.config import get_settings
 from src.libs.core.logger import get_logger, setup_logging
 from src.libs.exceptions.exception_handlers import register_exception_handlers
 
-# Load lightweight settings at module level
 settings = get_settings()
-
-# Initialization before FastAPI constructed
-setup_logging(log_level=settings.log_level)
-logger = get_logger("api.main")
+setup_logging(settings.log_level, json_logs=settings.log_json)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 1. Startup phase
-    # Create resources before serving requests and attach them to app.state
-    logger.info("Initializing database engine...")
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the database engine before the first request; dispose it at shutdown."""
     app.state.db_engine = create_async_db_engine(settings)
     app.state.session_factory = create_session_factory(app.state.db_engine)
-    logger.info("FastAPI startup complete.")
-
-    # Yield control to FastAPI
+    logger.info("API started", environment=settings.environment)
     yield
-
-    # 2. Shutdown phase
-    # Clean up resources when Uvicorn sends SIGTERM signal
-    logger.info("Shutting down FastAPI and disposing DB connections...")
     await app.state.db_engine.dispose()
+    logger.info("API stopped")
 
 
-# Initialize the app with the lifespan context manager
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-# Register exception handlers and routers
+# Starlette runs the middleware added last first: CORS wraps the request context.
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[str(settings.frontend_url).rstrip("/")],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
+)
 register_exception_handlers(app)
-app.include_router(health.router, prefix=settings.api_prefix, tags=["Health"])
-app.include_router(tenant.router, prefix=settings.api_prefix, tags=["Tenants"])
-app.include_router(user.router, prefix=settings.api_prefix, tags=["Users"])
-app.include_router(document.router, prefix=settings.api_prefix, tags=["Documents"])
+
+for router, tag in (
+    (health.router, "Health"),
+    (tenant.router, "Tenants"),
+    (user.router, "Users"),
+    (document.router, "Documents"),
+):
+    app.include_router(router, prefix=settings.api_prefix, tags=[tag])
