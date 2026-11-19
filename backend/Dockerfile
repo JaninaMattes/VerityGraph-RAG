@@ -2,7 +2,7 @@
 # Backend images. Build context: the repository root (see Dockerfile.dockerignore).
 #   target "api"    (default): the API and the migration job. Small: no torch.
 #   target "worker":           the ingestion worker with Docling (extra "ingestion").
-FROM python:3.14-slim AS base
+FROM python:3.15-slim AS base
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /uvx /bin/
 
