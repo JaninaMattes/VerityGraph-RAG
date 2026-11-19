@@ -12,7 +12,7 @@ from src.infrastructure.message_broker.provider import EventHandler
 from src.infrastructure.workflow_execution.temporalio.models import IngestionPayload
 from src.libs.core.logger import get_logger
 
-logger = get_logger("kafka.event_handler")
+logger = get_logger(__name__)
 
 
 class MinioObjectCreatedHandler(EventHandler):

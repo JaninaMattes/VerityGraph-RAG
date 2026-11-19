@@ -9,7 +9,7 @@ from aiokafka import AIOKafkaConsumer, TopicPartition
 from src.infrastructure.message_broker.provider import EventHandler
 from src.libs.core.logger import get_logger
 
-logger = get_logger("kafka.manager")
+logger = get_logger(__name__)
 
 
 class KafkaEventManager:
