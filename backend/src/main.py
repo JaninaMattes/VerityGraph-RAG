@@ -10,7 +10,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
+from src.api.middleware import (
+    REQUEST_ID_HEADER,
+    BodySizeLimitMiddleware,
+    RequestContextMiddleware,
+)
 from src.api.routers import auth, document, health, tenant, user
 from src.infrastructure.database.postgres.engine import create_async_db_engine
 from src.infrastructure.database.postgres.session import create_session_factory
@@ -41,7 +45,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-# Starlette runs the middleware added last first: CORS wraps the request context.
+# Starlette runs the middleware added last first: CORS wraps the request context,
+# which wraps the body limit (so a 413 has a request id and CORS headers).
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
