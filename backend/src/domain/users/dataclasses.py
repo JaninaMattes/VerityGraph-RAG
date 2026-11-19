@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 
@@ -10,7 +10,7 @@ class User:
 
     username: str
     email: str
-    password_hash: str
+    password: str = field(repr=False)  # plain text; hashed by UserService
 
 
 @dataclass(slots=True, frozen=True)
