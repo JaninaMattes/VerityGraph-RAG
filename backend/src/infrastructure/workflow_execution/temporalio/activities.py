@@ -4,6 +4,7 @@ Each database activity uses its own session and commits once at the end. Errors 
 classified for Temporal's retry policy:
 - invalid payload values (ValueError)   -> non-retryable 'DataValidationFailure';
 - missing records (NotFoundException)   -> non-retryable 'NotFound';
+- duplicate keys (ConflictException)    -> non-retryable 'Conflict';
 - any other error (database, network)   -> retryable 'DatabaseFailure'.
 """
 
@@ -20,10 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from src.domain.chunks.chunker import DocumentChunker
+from src.domain.chunks.entities import build_chunks
 from src.domain.documents.dataclasses import StorageKey
 from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.storage import StorageProvider
 from src.domain.ingestions.entities import IngestionJobEntity
+from src.infrastructure.database.postgres.repositories.chunk import (
+    PostgresChunkRepository,
+)
 from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
@@ -41,7 +47,12 @@ from src.infrastructure.workflow_execution.temporalio.models import (
 from src.libs.enums.document import DocumentStatus, DocumentType
 from src.libs.enums.ingestionjob import IngestionStage, ProcessingStatus
 from src.libs.enums.storage import StorageType
-from src.libs.exceptions.exceptions import AccessDeniedException, NotFoundException
+from src.libs.exceptions.exceptions import (
+    ConflictException,
+    DocumentParsingException,
+    NotFoundException,
+    StorageAccessDeniedException,
+)
 
 # Status name in the payload -> domain transition of the document.
 DOCUMENT_TRANSITIONS: dict[str, Callable[[DocumentEntity], None]] = {
@@ -54,7 +65,8 @@ DOCUMENT_TRANSITIONS: dict[str, Callable[[DocumentEntity], None]] = {
 PERMANENT_PROCESSING_ERRORS = (
     FileNotFoundError,
     NotFoundException,
-    AccessDeniedException,
+    StorageAccessDeniedException,
+    DocumentParsingException,
 )
 
 
@@ -80,6 +92,8 @@ def _activity_errors(action: str) -> Iterator[None]:
         ) from exc
     except NotFoundException as exc:
         raise ApplicationError(str(exc), non_retryable=True, type="NotFound") from exc
+    except ConflictException as exc:
+        raise ApplicationError(str(exc), non_retryable=True, type="Conflict") from exc
     except Exception as exc:
         activity.logger.exception("Failed to %s.", action)
         raise ApplicationError(f"Failed to {action}.", type="DatabaseFailure") from exc
@@ -92,9 +106,11 @@ class IngestFileActivities:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         storage: StorageProvider,
+        chunker: DocumentChunker,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
+        self._chunker = chunker
 
     @activity.defn(name="create_document_activity")
     async def create_document_activity(self, payload: CreateDocumentPayload) -> None:
@@ -177,6 +193,10 @@ class IngestFileActivities:
                     job.mark_failed(error=payload.error_message or "Unknown error")
                 else:
                     job.status = status
+                    if payload.current_stage:
+                        job.current_stage = parse_enum(
+                            IngestionStage, payload.current_stage
+                        )
                     job.updated_at = datetime.now(UTC)
                 await repository.update(job)
                 await session.commit()
@@ -185,13 +205,16 @@ class IngestFileActivities:
     async def process_document_activity(
         self, payload: ProcessDocumentPayload
     ) -> ProcessDocumentResult:
-        """Download the document to a temporary directory for processing.
+        """Download the document, chunk it and store the chunks in one transaction.
 
         The local file name comes from the server-generated object key, never from the
         client filename, so a name like '../../x' cannot escape the directory.
-        Missing objects, missing files and denied access are non-retryable.
+        The chunks replace earlier chunks of the document, so a retry is safe.
+        Missing objects, missing files, denied access and unreadable files are
+        non-retryable; database and network faults are retryable.
         """
         activity.logger.info("Processing document %s.", payload.document_id)
+        document_id, tenant_id = UUID(payload.document_id), UUID(payload.tenant_id)
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 local_path = Path(temp_dir) / PurePosixPath(payload.object_key).name
@@ -201,12 +224,24 @@ class IngestFileActivities:
                     payload.object_key,
                     str(local_path),
                 )
-                # Parsing, chunking and indexing are not implemented yet.
-                return ProcessDocumentResult(
-                    document_id=payload.document_id,
-                    chunks_processed=0,
-                    status=DocumentStatus.PROCESSED.value,
+                drafts = await asyncio.to_thread(self._chunker.chunk, local_path)
+            config = self._chunker.config
+            chunks = build_chunks(
+                drafts, document_id=document_id, tenant_id=tenant_id, config=config
+            )
+            async with self._session_factory() as session:
+                await PostgresChunkRepository(session).replace_for_document(
+                    document_id, tenant_id, config, chunks
                 )
+                await session.commit()
+            activity.logger.info(
+                "Stored %d chunks of document %s.", len(chunks), payload.document_id
+            )
+            return ProcessDocumentResult(
+                document_id=payload.document_id,
+                chunks_processed=len(chunks),
+                status=DocumentStatus.PROCESSED.value,
+            )
         except Exception as exc:
             permanent = isinstance(exc, PERMANENT_PROCESSING_ERRORS)
             activity.logger.exception(

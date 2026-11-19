@@ -40,6 +40,7 @@ class UpdateDocumentPayload(BaseModel):
 
 class ProcessDocumentPayload(BaseModel):
     document_id: str
+    tenant_id: str
     filename: str
     bucket: str
     object_key: str
