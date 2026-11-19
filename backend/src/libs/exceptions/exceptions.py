@@ -1,6 +1,8 @@
 """Application exception hierarchy.
 
 ApplicationException
+├── AuthenticationException      no, invalid or expired credentials
+├── PermissionDeniedException    the caller lacks the role for the operation
 ├── NotFoundException            the resource does not exist (or belongs to another tenant)
 ├── ConflictException            the write conflicts with existing data (duplicate key)
 ├── DatabaseException            the database failed; a retry may succeed
@@ -56,6 +58,14 @@ class ObjectNotFoundException(NotFoundException):
     """A storage object does not exist. The identifier is '<bucket>/<key>'."""
 
     resource = "Object"
+
+
+class AuthenticationException(ApplicationException):
+    """The caller has no valid credentials: no token, a bad token or a bad password."""
+
+
+class PermissionDeniedException(ApplicationException):
+    """The caller is authenticated but lacks the role for the operation."""
 
 
 class ConflictException(ApplicationException):

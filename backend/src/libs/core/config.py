@@ -25,11 +25,6 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------------------------------------
-    # TODO: REMOVE -- JUST FOR DEV
-    # ---------------------------------------------------------
-    dev_tenant_id: str
-
-    # ---------------------------------------------------------
     # Application
     # ---------------------------------------------------------
 
@@ -39,7 +34,8 @@ class Settings(BaseSettings):
     debug: bool = False
     api_prefix: str = "/api/v1"
 
-    secret_key: SecretStr
+    # Signs the access tokens. HS256 needs at least 32 bytes of key (RFC 7518).
+    secret_key: SecretStr = Field(min_length=32)
     algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     reset_token_expire_minutes: int = Field(default=60, gt=0)
@@ -90,6 +86,13 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = Field(default=512, gt=0)
     # OCR is slow; digital PDFs (for example SEC filings) have a text layer.
     docling_do_ocr: bool = False
+    # A presigned PUT cannot limit the upload size, so the worker refuses larger
+    # files before it downloads or parses them.
+    max_upload_bytes: int = Field(default=50 * 1024 * 1024, gt=0)
+    max_document_pages: int = Field(default=500, gt=0)
+    # Files that one worker process parses at the same time (Docling is not
+    # thread-safe, so more than 1 only queues inside the process).
+    max_concurrent_parses: int = Field(default=1, gt=0)
 
     # ---------------------------------------------------------
     # Frontend
