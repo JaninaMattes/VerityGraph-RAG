@@ -33,21 +33,37 @@ COMPONENT = "docling-hybrid-chunker"
 class DoclingChunker(DocumentChunker):
     """Chunks a file with Docling. Each chunk keeps the page and box of its items."""
 
-    def __init__(self, converter: Any, chunker: Any, config: ChunkingConfig) -> None:
+    def __init__(
+        self,
+        converter: Any,
+        chunker: Any,
+        config: ChunkingConfig,
+        *,
+        max_pages: int,
+        max_bytes: int,
+    ) -> None:
         self._converter = converter
         self._chunker = chunker
         self.config = config
+        # Docling rejects a larger file before it runs a model (ConversionError).
+        self.max_pages = max_pages
+        self.max_bytes = max_bytes
         # Docling does not document its models as thread-safe: one file at a time.
         self._lock = threading.Lock()
 
     def chunk(self, file_path: Path) -> list[ChunkDraft]:
         """Return the non-blank chunks of the file in reading order.
 
-        Raise DocumentParsingException if Docling cannot convert the file.
+        Raise DocumentParsingException if Docling cannot convert the file, or if
+        it has more than `max_pages` pages or `max_bytes` bytes.
         """
         with self._lock:
             try:
-                document = self._converter.convert(file_path).document
+                document = self._converter.convert(
+                    file_path,
+                    max_num_pages=self.max_pages,
+                    max_file_size=self.max_bytes,
+                ).document
             except ConversionError as exc:
                 raise DocumentParsingException(
                     f"Docling cannot convert '{file_path.name}': {exc}"
@@ -95,7 +111,7 @@ def _spans(chunk: Any, document: DoclingDocument) -> Iterator[ChunkSpan]:
 
 
 def create_docling_chunker(
-    tokenizer_model: str, max_tokens: int, do_ocr: bool
+    tokenizer_model: str, max_tokens: int, do_ocr: bool, max_pages: int, max_bytes: int
 ) -> DoclingChunker:
     """Build the chunker and the config that identifies its output.
 
@@ -128,4 +144,6 @@ def create_docling_chunker(
         converter=converter,
         chunker=HybridChunker(tokenizer=tokenizer, merge_peers=True),
         config=config,
+        max_pages=max_pages,
+        max_bytes=max_bytes,
     )
