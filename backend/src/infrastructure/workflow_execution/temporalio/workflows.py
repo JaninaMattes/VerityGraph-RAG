@@ -34,7 +34,7 @@ PROCESSING_RETRY_POLICY = RetryPolicy(
 
 @workflow.defn
 class DocumentIngestionWorkflow:
-    """Record an uploaded document, process it, and record the outcome.
+    """Record an uploaded document, chunk it into Postgres, and record the outcome.
 
     On a processing failure the document and the job are marked FAILED and the
     workflow fails with the processing error. A failure of this clean-up is logged
@@ -71,11 +71,22 @@ class DocumentIngestionWorkflow:
             ),
         )
 
+        await self._db_activity(
+            IngestFileActivities.update_ingestion_job_activity,
+            UpdateIngestionJobPayload(
+                job_id=job_id,
+                document_id=payload.document_id,
+                status="RUNNING",
+                current_stage="CHUNKING",
+            ),
+        )
+
         try:
-            await workflow.execute_activity(
+            await workflow.execute_activity_method(
                 IngestFileActivities.process_document_activity,
                 ProcessDocumentPayload(
                     document_id=payload.document_id,
+                    tenant_id=payload.tenant_id,
                     filename=payload.filename,
                     bucket=payload.bucket_name,
                     object_key=payload.object_key,
@@ -104,7 +115,7 @@ class DocumentIngestionWorkflow:
 
     async def _db_activity(self, activity_fn: Callable[..., Any], payload: Any) -> None:
         """Run a short database activity with the default retry policy."""
-        await workflow.execute_activity(
+        await workflow.execute_activity_method(
             activity_fn, payload, schedule_to_close_timeout=DB_ACTIVITY_TIMEOUT
         )
 
