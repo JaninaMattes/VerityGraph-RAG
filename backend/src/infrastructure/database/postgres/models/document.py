@@ -1,11 +1,14 @@
 import typing
 import uuid
-from datetime import UTC, datetime
 
-from sqlalchemy import UUID, BigInteger, DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import UUID, BigInteger, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.database.postgres.base import Base
+from src.infrastructure.database.postgres.models.mixins import (
+    SoftDeleteMixin,
+    TimestampMixin,
+)
 from src.libs.enums.document import DocumentStatus, DocumentType, LanguageType
 from src.libs.enums.storage import StorageType
 
@@ -15,15 +18,12 @@ if typing.TYPE_CHECKING:
     from .tenant import Tenant
 
 
-class Document(Base):
+class Document(TimestampMixin, SoftDeleteMixin, Base):
+    """An uploaded file of one tenant. The bytes live in object storage."""
+
     __tablename__ = "document"
 
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        primary_key=True,
-        index=True,
-        # server_default=text("gen_random_uuid()"),  # server-side responsiblity
-    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("tenant.tenant_id", ondelete="CASCADE"),
         index=True,
@@ -35,7 +35,7 @@ class Document(Base):
         back_populates="document", cascade="all, delete-orphan"
     )
     document_chunks: Mapped[list[DocumentChunk]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
+        back_populates="document", cascade="all, delete-orphan", passive_deletes=True
     )
 
     # Document properties
@@ -64,18 +64,6 @@ class Document(Base):
         Enum(DocumentStatus, name="documentstatus", native_enum=True),
         default=DocumentStatus.UPLOAD_PENDING,
     )
-
-    # Audit information
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID)
 
     __table_args__ = (
         Index(

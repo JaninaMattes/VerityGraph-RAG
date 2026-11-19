@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.libs.core.logger import get_logger
 
-logger = get_logger("api.infrastructure.postgres")
+logger = get_logger(__name__)
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
