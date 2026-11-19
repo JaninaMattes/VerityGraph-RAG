@@ -10,7 +10,7 @@ from src.domain.documents.storage import StorageProvider
 from src.libs.core.logger import get_logger
 from src.libs.exceptions.exceptions import BucketNotFoundException
 
-logger = get_logger("api.domain.doc.service")
+logger = get_logger(__name__)
 
 UPLOAD_URL_TTL = timedelta(minutes=15)
 DOWNLOAD_URL_TTL = timedelta(minutes=5)
