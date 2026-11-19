@@ -6,6 +6,7 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      target: api
     container_name: db-migrate
     command: alembic upgrade head
     env_file:
@@ -24,9 +25,10 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      target: api
     container_name: web-api
     restart: unless-stopped
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-access-log
     ports:
       - "8000:8000"
     env_file:
@@ -34,6 +36,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      # The slim image has no curl; urlopen raises (exit 1) on a non-2xx status.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
     networks:
       - service-network
 
@@ -313,11 +322,15 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      target: worker
     container_name: kafka-consumer
     restart: unless-stopped
     command: python -m src.infrastructure.message_broker.kafka.worker
     env_file:
       - ../backend/.env
+    volumes:
+      # Docling layout models and the tokenizer (downloaded on the first file).
+      - model-cache:/app/.cache/huggingface
     depends_on:
       kafka-init-topics:
         condition: service_completed_successfully
@@ -399,6 +412,8 @@ volumes:
   temporal-data:
     driver: local
   pgadmin-working-dir:
+    driver: local
+  model-cache:
     driver: local  
 
 networks:
