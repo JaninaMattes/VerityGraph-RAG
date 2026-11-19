@@ -1,47 +1,63 @@
-name: Run Unit Test via Pytest
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
-# Principle of Least Privilege
+# Principle of least privilege.
 permissions:
   contents: read
 
-# Concurrency control to cancel redundant runs
+# Cancel the older run when a branch receives a new push.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  run-test:
-    name: python-test
+  backend:
+    name: backend
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    # A disposable database for the integration tests (tests/integration).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d test_db"
+          --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2 (Pinned SHA)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5.3.0 (Pinned SHA)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5.3.0
         with:
           python-version-file: "./backend/.python-version"
 
       - name: Install uv and enable caching
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v5.x (Pinned SHA)
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v5.x
         with:
           version: "0.12.19"
           enable-cache: true
 
       - name: Install the project
-        working-directory: ./backend
         env:
-          UV_LINK_MODE: copy 
-        run: uv sync --locked --all-extras --dev
+          UV_LINK_MODE: copy
+        # The extra installs Docling; on Linux torch comes from the CPU-only index.
+        run: uv sync --locked --dev --extra ingestion
+
       - name: Create .env file for CI
-        working-directory: ./backend
         run: |
           cat << 'EOF' > .env
           DEV_TENANT_ID=12bf3456-7d89-12d3-a456-78c91cf2b34f
@@ -56,24 +72,50 @@ jobs:
           TEMPORAL_TASK_QUEUE=ci-task-queue
           FRONTEND_URL=http://localhost:3000
           EOF
-      
-      - name: Run Ruff Linter
-        working-directory: ./backend
+
+      - name: Ruff lint
         run: uv run ruff check --output-format=github .
 
-      - name: Run Ruff Formatter
-        working-directory: ./backend
+      - name: Ruff format
         run: uv run ruff format --check .
-      - name: Run tests
-        working-directory: ./backend
+
+      - name: Unit and integration tests
         # The workflow tests download the Temporal time-skipping test server.
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_db
         run: uv run pytest tests --junitxml=pytest-report.xml --cov --cov-fail-under=95
 
-      # Upload test results as artifacts
       - name: Upload test results
-        if: always() && !env.ACT 
-        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3 (Pinned SHA)
+        if: always() && !env.ACT
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: pytest-report-${{ github.run_id }}
           path: ./backend/pytest-report.xml
           retention-days: 7
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check and build
+        run: npm run build
