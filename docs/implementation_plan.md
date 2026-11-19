@@ -30,7 +30,7 @@ multi-region deployment, Slack integration, fine-tuning models.
 | --- | --- |
 | Tenants, users (CRUD) | Works. JWT bearer authentication on every endpoint except health and login |
 | Presigned upload and download (MinIO) | Works. Object keys are `tenant/namespace/yyyy/mm/document_id` |
-| MinIO → Kafka → Temporal workflow | Works. Idempotent: workflow ID `ingestion-job-<document_id>`, `ALLOW_DUPLICATE_FAILED_ONLY` |
+| MinIO → Kafka → Temporal workflow | Works. Idempotent: workflow ID `ingestion-job-<document_id>`, `REJECT_DUPLICATE` (one workflow per upload, also after a failure) |
 | Document processing | Docling parses and chunks the file. Chunks and their page/box spans are stored in Postgres |
 | Data model | The provenance model ([provenance-model.md](provenance-model.md)): chunks, spans, pipeline configs, entities, relationships, communities, embeddings |
 | Tests and CI | Unit tests and Postgres integration tests (coverage gate ≥ 95 %), Ruff, frontend lint and build |
