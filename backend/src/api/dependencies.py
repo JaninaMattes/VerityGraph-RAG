@@ -12,6 +12,7 @@ from minio import Minio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.rate_limit import RateLimiter
 from src.domain.auth.entities import Principal
 from src.domain.auth.hasher import PasswordHasher
 from src.domain.auth.service import AuthService
@@ -60,6 +61,24 @@ def get_password_hasher() -> PasswordHasher:
 
 
 HasherDep = Annotated[PasswordHasher, Depends(get_password_hasher)]
+
+
+@cache
+def get_login_rate_limiter() -> RateLimiter:
+    """One login limiter per process, so the counts outlive a request."""
+    return RateLimiter(get_settings().login_attempts_per_minute)
+
+
+def limit_login_attempts(
+    request: Request,
+    limiter: Annotated[RateLimiter, Depends(get_login_rate_limiter)],
+) -> None:
+    """Count one login attempt of the client address.
+
+    Raise TooManyRequestsException (429) over the limit. Behind a proxy, run
+    uvicorn with --proxy-headers, or all clients share the proxy's address.
+    """
+    limiter.hit(request.client.host if request.client else "unknown")
 
 
 def get_minio_client(request: Request) -> Minio:
