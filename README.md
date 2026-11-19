@@ -83,7 +83,11 @@ Design decisions:
 - **Temporal owns the long-running work.** Each step is an activity with its own retry
   policy. Data errors are not retried; database and network faults are.
 - **At-least-once delivery.** The Kafka consumer commits an offset only after the workflow
-  has started. The deterministic workflow ID makes duplicate events harmless.
+  has started. The deterministic workflow ID makes duplicate events harmless: one
+  upload starts one workflow, also after a failed run.
+- **Fail fast, not slow.** The parse activity sends a heartbeat every 20 s, so a crashed
+  worker is detected in about 2 minutes. Login is rate-limited and request bodies are
+  limited to 1 MiB.
 - **Ports and adapters.** The domain defines `Protocol`s for storage, chunking and
   repositories, and the infrastructure layer implements them. Tests replace them with mocks.
 - **PostgreSQL is the source of truth.** Chunk IDs are deterministic, so a retry writes the
@@ -149,6 +153,12 @@ Planned: [Qdrant](https://qdrant.tech/),
 
    Inside the stack, run
    `docker compose -f docker/compose.yaml run --rm web-api python -m src.cli create-admin --organisation ACME --username admin --email admin@acme.example`.
+   A second run with the same organisation changes nothing.
+
+   For local development, `make seed-demo` creates the tenant "Demo Organisation"
+   with `demo-admin@example.com` (admin) and `demo-member@example.com` (member). It
+   prints a new random password for each, only once. It refuses
+   `ENVIRONMENT=production`.
 
 ### Services
 
@@ -178,7 +188,10 @@ in, upload a document and start the ingestion:
      | python -c "import json, sys; print(json.load(sys.stdin)['access_token'])")
    ```
 
-   A wrong email or password returns 401 without saying which one was wrong.
+   A wrong email or password returns 401 without saying which one was wrong. More
+   than `LOGIN_ATTEMPTS_PER_MINUTE` (10) attempts from one address in a minute return
+   429 with `Retry-After`. Each API process counts separately; behind a proxy, run
+   uvicorn with `--proxy-headers`, or all clients share the proxy's address.
 
 2. Request an upload URL:
 
@@ -228,7 +241,8 @@ Other endpoints: `POST/GET/PATCH/DELETE /api/v1/tenants/{tenant_id}`,
 `/api/v1/users/{user_id}` and `GET /api/v1/info`. The OpenAPI docs list all of them.
 Creating, changing or deleting a tenant, and creating or deleting a user, need the
 `admin` role. A user can change its own name and email. A missing or invalid token
-returns 401; a missing role returns 403.
+returns 401; a missing role returns 403. A request body larger than
+`MAX_REQUEST_BODY_BYTES` (1 MiB) returns 413.
 
 ## Development
 
@@ -274,7 +288,7 @@ backend/src/
 │   ├── message_broker/kafka # Event handler, consumer loop, worker entry point
 │   └── workflow_execution/temporalio/  # Ingestion workflow and activities
 ├── libs/             # Settings, logging, enums, schemas, exceptions
-└── cli.py            # Admin commands: python -m src.cli create-admin
+└── cli.py            # Admin commands: python -m src.cli create-admin | seed-demo
 backend/tests/        # Mirrors src/; integration/ runs against a real PostgreSQL
 docker/               # Compose stack and init scripts
 frontend/             # Vite + React scaffold
