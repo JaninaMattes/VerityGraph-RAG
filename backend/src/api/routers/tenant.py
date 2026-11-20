@@ -1,11 +1,15 @@
-"""HTTP endpoints for tenants. A caller can only read or change its own tenant."""
+"""HTTP endpoints for tenants. A caller reads its own tenant; an admin changes it."""
 
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 
-from src.api.dependencies import get_current_tenant_id, get_tenant_service
+from src.api.dependencies import (
+    get_current_tenant_id,
+    get_tenant_service,
+    require_admin,
+)
 from src.domain.tenants.dataclasses import Tenant, UpdateTenant
 from src.domain.tenants.service import TenantService
 from src.libs.exceptions.exceptions import TenantNotFoundException
@@ -32,6 +36,7 @@ def ensure_own_tenant(tenant_id: uuid.UUID, current_tenant_id: uuid.UUID) -> Non
 
 @router.post(
     "/tenants",
+    dependencies=[Depends(require_admin)],
     status_code=status.HTTP_201_CREATED,
     response_model=TenantResponse,
 )
@@ -39,7 +44,7 @@ async def create_tenant(
     request: CreateTenantRequest,
     service: TenantServiceDep,
 ) -> TenantResponse:
-    """Create a tenant (201). A blank organisation name returns 422."""
+    """Create a tenant (201, admin only). A blank organisation name returns 422."""
     return TenantResponse.model_validate(
         await service.create(Tenant(request.organisation))
     )
@@ -62,6 +67,7 @@ async def read_tenant(
 
 @router.patch(
     "/tenants/{tenant_id}",
+    dependencies=[Depends(require_admin)],
     status_code=status.HTTP_200_OK,
     response_model=TenantResponse,
 )
@@ -81,6 +87,7 @@ async def update_tenant(
 
 @router.delete(
     "/tenants/{tenant_id}",
+    dependencies=[Depends(require_admin)],
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def revoke_tenant(

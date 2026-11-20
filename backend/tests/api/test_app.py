@@ -1,7 +1,10 @@
 """Tests for the application wiring in src.main (middleware and lifespan)."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from fastapi.testclient import TestClient
 
+from src import main
 from src.api.middleware import REQUEST_ID_HEADER
 from src.libs.core.config import Settings
 from src.main import app, settings
@@ -71,3 +74,27 @@ class TestLogFormat:
         }
 
         assert formats == {"development": False, "testing": True, "production": True}
+
+
+class TestLifespan:
+    """Startup creates the shared clients once; shutdown releases them."""
+
+    async def test_startup_creates_one_storage_client(self, test_settings: Settings):
+        """
+        GIVEN the application
+        WHEN it starts and stops
+        THEN app.state holds one MinIO client for all requests
+        AND the database engine is disposed at shutdown
+        """
+        engine = MagicMock(dispose=AsyncMock())
+        client = MagicMock()
+
+        with (
+            patch.object(main, "create_async_db_engine", return_value=engine),
+            patch.object(main, "create_storage_client", return_value=client) as create,
+        ):
+            async with main.lifespan(main.app):
+                assert main.app.state.storage_client is client
+
+        create.assert_called_once_with(main.settings)
+        engine.dispose.assert_awaited_once()

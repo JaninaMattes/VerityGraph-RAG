@@ -29,6 +29,7 @@ from src.infrastructure.workflow_execution.temporalio.activities import (
 )
 from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
+    processing_task_queue,
 )
 from src.libs.core.config import Settings, get_settings
 from src.libs.core.logger import get_logger, setup_logging
@@ -94,9 +95,14 @@ async def main() -> None:
             tokenizer_model=settings.chunk_tokenizer_model,
             max_tokens=settings.chunk_max_tokens,
             do_ocr=settings.docling_do_ocr,
+            max_pages=settings.max_document_pages,
+            max_bytes=settings.max_upload_bytes,
         )
         activities = IngestFileActivities(
-            create_session_factory(db_engine), storage, chunker
+            create_session_factory(db_engine),
+            storage,
+            chunker,
+            max_file_bytes=settings.max_upload_bytes,
         )
         temporal_client = await Client.connect(
             settings.temporal_url,
@@ -112,9 +118,17 @@ async def main() -> None:
                 activities.update_document_activity,
                 activities.create_ingestion_job_activity,
                 activities.update_ingestion_job_activity,
-                activities.process_document_activity,
             ],
             # Allow in-flight activities to finish before forceful cancellation
+            graceful_shutdown_timeout=timedelta(seconds=30),
+        )
+        # Parsing holds the Docling models and the page images in memory; this
+        # worker takes only as many files as it can parse at the same time.
+        parse_worker = Worker(
+            temporal_client,
+            task_queue=processing_task_queue(settings.temporal_task_queue),
+            activities=[activities.process_document_activity],
+            max_concurrent_activities=settings.max_concurrent_parses,
             graceful_shutdown_timeout=timedelta(seconds=30),
         )
 
@@ -127,7 +141,7 @@ async def main() -> None:
 
         stop_event = asyncio.Event()
         install_signal_handlers(stop_event)
-        async with temporal_worker:
+        async with temporal_worker, parse_worker:
             logger.info(
                 "Worker running on task queue %s.", settings.temporal_task_queue
             )

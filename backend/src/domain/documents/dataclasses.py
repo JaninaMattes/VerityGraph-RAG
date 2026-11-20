@@ -21,6 +21,11 @@ class StorageKey:
     value: str
 
     @property
+    def tenant_id(self) -> UUID:
+        """The tenant id in the first key segment. Raise ValueError if it is not a UUID."""
+        return UUID(self.value.split("/", 1)[0])
+
+    @property
     def document_id(self) -> UUID:
         """The document id in the last key segment. Raise ValueError if it is not a UUID."""
         return UUID(PurePosixPath(self.value).stem)
@@ -33,7 +38,7 @@ class StorageKey:
         tenant_id: UUID,
         namespace: str,
         original_filename: str | None = None,  # allows to infer extension
-    ) -> StorageKey:
+    ) -> "StorageKey":
         now = datetime.now(UTC)
         # Clean namespace
         namespace = re.sub(r"[^a-zA-Z0-9\-]", "", namespace).lower() or "files"

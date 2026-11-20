@@ -15,16 +15,26 @@ from fastapi.responses import JSONResponse
 
 from src.libs.core.logger import get_logger
 from src.libs.exceptions.exceptions import (
+    AuthenticationException,
     ConflictException,
     DatabaseException,
     NotFoundException,
+    PermissionDeniedException,
     StorageException,
+    TooManyRequestsException,
 )
 
 logger = get_logger(__name__)
 
 # exception type -> (status code, error code, public message)
 ERROR_RESPONSES: dict[type[Exception], tuple[int, str, str]] = {
+    AuthenticationException: (401, "not_authenticated", "Authentication is required."),
+    PermissionDeniedException: (403, "forbidden", "You may not do this."),
+    TooManyRequestsException: (
+        429,
+        "too_many_requests",
+        "Too many attempts. Try again later.",
+    ),
     NotFoundException: (404, "not_found", "The requested resource couldn't be found."),
     ConflictException: (409, "conflict", "The entry exists already."),
     DatabaseException: (500, "database_error", "Database operation failed."),
@@ -42,10 +52,22 @@ def _make_handler(
         else:
             logger.warning("request rejected", error=error, reason=str(exc))
         return JSONResponse(
-            status_code=status_code, content={"error": error, "message": message}
+            status_code=status_code,
+            content={"error": error, "message": message},
+            headers=_headers(exc),
         )
 
     return handler
+
+
+def _headers(exc: Exception) -> dict[str, str] | None:
+    """Return the headers that tell the client how to recover from `exc`."""
+    if isinstance(exc, AuthenticationException):
+        # RFC 6750: a 401 names the scheme that the client must use.
+        return {"WWW-Authenticate": "Bearer"}
+    if isinstance(exc, TooManyRequestsException):
+        return {"Retry-After": str(exc.retry_after)}
+    return None
 
 
 async def _validation_handler(request: Request, exc: Exception) -> JSONResponse:

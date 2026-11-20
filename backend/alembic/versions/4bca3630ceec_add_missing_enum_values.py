@@ -26,7 +26,14 @@ ENUMS = {
     "ingestionstage": (
         "ingestion_job",
         "current_stage",
-        ["DOWNLOAD", "PARSING", "CHUNKING", "EMBEDDING", "GRAPH_BUILDING", "EVALUATION"],
+        [
+            "DOWNLOAD",
+            "PARSING",
+            "CHUNKING",
+            "EMBEDDING",
+            "GRAPH_BUILDING",
+            "EVALUATION",
+        ],
         {"INITIALISING": "DOWNLOAD", "VECTOR_BUILDING": "GRAPH_BUILDING"},
     ),
     "documenttype": (

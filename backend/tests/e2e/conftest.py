@@ -110,12 +110,14 @@ def database_url(container: Callable[..., tuple[str, str]]) -> Iterator[str]:
     )
     # The init server does not listen on TCP, so this passes only for the real one.
     wait_until(
-        lambda: subprocess.run(
-            ["docker", "exec", container_id, "pg_isready", "-h", "127.0.0.1"],
-            check=False,
-            capture_output=True,
-        ).returncode
-        == 0,
+        lambda: (
+            subprocess.run(
+                ["docker", "exec", container_id, "pg_isready", "-h", "127.0.0.1"],
+                check=False,
+                capture_output=True,
+            ).returncode
+            == 0
+        ),
         "Postgres",
     )
     url = f"postgresql+asyncpg://postgres@{address}/e2e"

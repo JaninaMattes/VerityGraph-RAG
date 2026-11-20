@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from src.api.dependencies import (
     get_chunk_service,
@@ -23,6 +23,8 @@ router = APIRouter()
 DocServiceDep = Annotated[DocumentService, Depends(get_document_service)]
 ChunkServiceDep = Annotated[ChunkService, Depends(get_chunk_service)]
 TenantIdDep = Annotated[uuid.UUID, Depends(get_current_tenant_id)]
+# A page holds at most MAX_PAGE_SIZE chunks, so one request has bounded memory.
+MAX_PAGE_SIZE = 500
 
 
 @router.post(
@@ -75,11 +77,16 @@ async def list_chunks(
     document_id: uuid.UUID,
     tenant_id: TenantIdDep,
     service: ChunkServiceDep,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ChunkResponse]:
-    """Return the chunks of a document in order, with page and box per span.
+    """Return a page of the chunks of a document in order, with page and box per span.
 
-    The list is empty until the ingestion has processed the document. An unknown
-    document returns 404.
+    Read the next page with `offset` + `limit` until a page has fewer than `limit`
+    chunks. The list is empty until the ingestion has processed the document. An
+    unknown document returns 404.
     """
-    chunks = await service.list_for_document(document_id, tenant_id)
+    chunks = await service.list_for_document(
+        document_id, tenant_id, limit=limit, offset=offset
+    )
     return [ChunkResponse.model_validate(chunk) for chunk in chunks]

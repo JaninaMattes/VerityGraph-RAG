@@ -60,7 +60,12 @@ class PostgresChunkRepository(PostgresRepository, ChunkRepository):
             await self._session.flush()
 
     async def list_for_document(
-        self, document_id: UUID, tenant_id: UUID
+        self,
+        document_id: UUID,
+        tenant_id: UUID,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Chunk]:
         statement = (
             select(DocumentChunk)
@@ -70,6 +75,8 @@ class PostgresChunkRepository(PostgresRepository, ChunkRepository):
             )
             .options(selectinload(DocumentChunk.spans))
             .order_by(DocumentChunk.chunk_index)
+            .limit(limit)
+            .offset(offset)
         )
         with translate_db_errors("list the chunks of a document"):
             rows = (await self._session.execute(statement)).scalars().all()

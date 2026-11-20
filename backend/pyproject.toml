@@ -16,6 +16,8 @@ dependencies = [
     "structlog>=26.1.0",
     "temporalio>=1.30.0",
     "uvicorn>=0.52.4",
+    "pyjwt>=2.10",
+    "pwdlib[argon2]>=0.2",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +42,16 @@ explicit = true
 
 [tool.fastapi]
 entrypoint = "src.main:app"
+
+# A [tool.ruff] table makes this file Ruff's config, so backend/ is the project
+# root wherever Ruff runs (CLI or editor) and `src` and `tests` sort as first-party.
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy resolves relationship targets by name, so the models import each
+# other only for type checking; moving those imports out causes a circular import.
+"src/infrastructure/database/postgres/models/*" = ["TC004"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

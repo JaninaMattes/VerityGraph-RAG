@@ -1,4 +1,4 @@
-"""End-to-end test of the ingestion path with real components.
+"""End-to-end tests of the ingestion path with real components.
 
 Real: the upload URL, MinIO and its upload event, the Kafka event handler, the
 Temporal workflow and activities, Docling, Postgres and the chunk read path.
@@ -12,20 +12,25 @@ import queue
 import shutil
 import threading
 import uuid
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from io import BytesIO
 from typing import Any
 
 import httpx
 import pytest
+import pytest_asyncio
 from minio import Minio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from temporalio.client import Client, WorkflowFailureError
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from src.domain.chunks.entities import Chunk
 from src.domain.chunks.service import ChunkService
+from src.domain.documents.entities import DocumentEntity
 from src.domain.documents.service import DocumentService
 from src.infrastructure.database.postgres.models import IngestionJob, Tenant
 from src.infrastructure.database.postgres.repositories.chunk import (
@@ -35,13 +40,14 @@ from src.infrastructure.database.postgres.repositories.document import (
     PostgresDocumentRepository,
 )
 from src.infrastructure.message_broker.kafka.handler import MinioObjectCreatedHandler
-from src.infrastructure.parsing.docling import create_docling_chunker
+from src.infrastructure.parsing.docling import DoclingChunker, create_docling_chunker
 from src.infrastructure.storage.minio.storage import MinioStorage
 from src.infrastructure.workflow_execution.temporalio.activities import (
     IngestFileActivities,
 )
 from src.infrastructure.workflow_execution.temporalio.workflows import (
     DocumentIngestionWorkflow,
+    processing_task_queue,
 )
 from src.libs.enums.document import DocumentStatus
 from src.libs.enums.ingestionjob import ProcessingStatus
@@ -56,6 +62,7 @@ pytestmark = pytest.mark.skipif(
 BUCKET = "files"
 TASK_QUEUE = "e2e-ingestion"
 EVENT_TIMEOUT_SECONDS = 30
+MAX_BYTES = 10 * 1024 * 1024
 PAGES = [
     ["Annual Report 2026", "", "Acme Corp invests in Globex Inc."],
     ["Risk Factors", "", "Competition from Globex Inc. may reduce margins."],
@@ -88,7 +95,7 @@ class UploadEvents:
 
     def wait_until_listening(self) -> None:
         for attempt in range(EVENT_TIMEOUT_SECONDS):
-            key = f"probe/{attempt}"
+            key = f"probe/{uuid.uuid4()}"
             self._client.put_object(BUCKET, key, BytesIO(b"probe"), 5)
             try:
                 self.next_for(key, timeout=1)
@@ -105,7 +112,35 @@ class UploadEvents:
                 return record
 
 
-async def add_tenant(session_factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+@pytest.fixture(scope="session")
+def chunker() -> DoclingChunker:
+    """The real Docling chunker, loaded once (its models are large)."""
+    return create_docling_chunker(
+        tokenizer_model="BAAI/bge-small-en-v1.5",
+        max_tokens=512,
+        do_ocr=False,
+        max_pages=50,
+        max_bytes=MAX_BYTES,
+    )
+
+
+@pytest.fixture
+def storage(minio_server: MinioServer) -> MinioStorage:
+    storage = MinioStorage(client=minio_server.client(), bucket_name=BUCKET)
+    storage.create_bucket()
+    return storage
+
+
+@pytest.fixture
+def events(storage: MinioStorage) -> UploadEvents:
+    """A listener for MinIO's upload events that is ready before the test uploads."""
+    events = UploadEvents(storage.client)
+    events.wait_until_listening()
+    return events
+
+
+@pytest_asyncio.fixture
+async def tenant_id(session_factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
     tenant_id = uuid.uuid4()
     async with session_factory() as session:
         session.add(Tenant(tenant_id=tenant_id, organisation="ACME"))
@@ -113,84 +148,112 @@ async def add_tenant(session_factory: async_sessionmaker[AsyncSession]) -> uuid.
     return tenant_id
 
 
+@pytest_asyncio.fixture
+async def temporal(
+    session_factory: async_sessionmaker[AsyncSession],
+    storage: MinioStorage,
+    chunker: DoclingChunker,
+) -> AsyncIterator[Client]:
+    """A Temporal client with the two workers of the real worker process."""
+    activities = IngestFileActivities(
+        session_factory, storage, chunker, max_file_bytes=MAX_BYTES
+    )
+    async with (
+        await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env,
+        Worker(
+            env.client,
+            task_queue=TASK_QUEUE,
+            workflows=[DocumentIngestionWorkflow],
+            activities=[
+                activities.create_document_activity,
+                activities.update_document_activity,
+                activities.create_ingestion_job_activity,
+                activities.update_ingestion_job_activity,
+            ],
+        ),
+        Worker(
+            env.client,
+            task_queue=processing_task_queue(TASK_QUEUE),
+            activities=[activities.process_document_activity],
+            max_concurrent_activities=1,
+        ),
+    ):
+        yield env.client
+
+
+async def upload(
+    content: bytes,
+    tenant_id: uuid.UUID,
+    storage: MinioStorage,
+    events: UploadEvents,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> tuple[uuid.UUID, dict[str, Any]]:
+    """Upload `content` like a client does; return the document id and its event."""
+    async with session_factory() as session:
+        url = await DocumentService(
+            storage, PostgresDocumentRepository(session)
+        ).create_upload_url(tenant_id=tenant_id, filename="report.pdf")
+    async with httpx.AsyncClient() as http:
+        response = await http.put(
+            url.url, content=content, headers=url.required_headers
+        )
+    assert response.status_code == 200, response.text
+    return url.document_id, events.next_for(f"{url.document_id}.pdf")
+
+
+async def ingest(client: Client, record: dict[str, Any], document_id: uuid.UUID):
+    """Pass the event to the handler and wait for the workflow to finish."""
+    await MinioObjectCreatedHandler(client, TASK_QUEUE).handle(record)
+    await client.get_workflow_handle(f"ingestion-job-{document_id}").result(
+        rpc_timeout=timedelta(minutes=5)
+    )
+
+
+async def stored(
+    session_factory: async_sessionmaker[AsyncSession],
+    document_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+) -> tuple[DocumentEntity, list[IngestionJob], list[Chunk]]:
+    """Return the document, its ingestion jobs and its chunks (via the read path)."""
+    async with session_factory() as session:
+        documents = PostgresDocumentRepository(session)
+        document = await documents.get_one(document_id, tenant_id)
+        jobs = list(
+            await session.scalars(
+                select(IngestionJob).where(IngestionJob.document_id == document_id)
+            )
+        )
+        chunks = await ChunkService(
+            documents, PostgresChunkRepository(session)
+        ).list_for_document(document_id, tenant_id)
+    return document, jobs, chunks
+
+
 class TestIngestionPipeline:
-    """An uploaded PDF ends as chunks with page evidence in Postgres."""
+    """An upload ends as chunks with page evidence, or as a recorded failure."""
 
     async def test_uploaded_pdf_is_chunked_into_postgres(
-        self,
-        minio_server: MinioServer,
-        session_factory: async_sessionmaker[AsyncSession],
+        self, tenant_id, storage, events, session_factory, temporal
     ):
         """
-        GIVEN a tenant, an empty bucket and a two-page PDF
-        WHEN the client uploads the PDF with the presigned URL
+        GIVEN a tenant and a two-page PDF
+        WHEN the client uploads it with the presigned URL
             AND the handler receives MinIO's upload event
             AND the worker runs the ingestion workflow with real Docling
-        THEN the workflow completes
-        AND the document is PROCESSED and its ingestion job COMPLETED
+        THEN the document is PROCESSED and its ingestion job COMPLETED
         AND the chunk read path returns each sentence with its page and box
         """
-        # Arrange
-        client = minio_server.client()
-        storage = MinioStorage(client=client, bucket_name=BUCKET)
-        storage.create_bucket()
-        events = UploadEvents(client)
-        events.wait_until_listening()
-        tenant_id = await add_tenant(session_factory)
-        async with session_factory() as session:
-            upload = await DocumentService(
-                storage, PostgresDocumentRepository(session)
-            ).create_upload_url(tenant_id=tenant_id, filename="report.pdf")
-        chunker = create_docling_chunker(
-            tokenizer_model="BAAI/bge-small-en-v1.5", max_tokens=512, do_ocr=False
+        document_id, record = await upload(
+            text_pdf(PAGES), tenant_id, storage, events, session_factory
         )
-        activities = IngestFileActivities(session_factory, storage, chunker)
 
-        # Act
-        async with httpx.AsyncClient() as http:
-            response = await http.put(
-                upload.url, content=text_pdf(PAGES), headers=upload.required_headers
-            )
-        assert response.status_code == 200, response.text
-        record = events.next_for(f"{upload.document_id}.pdf")
-        async with (
-            await WorkflowEnvironment.start_time_skipping(
-                data_converter=pydantic_data_converter
-            ) as env,
-            Worker(
-                env.client,
-                task_queue=TASK_QUEUE,
-                workflows=[DocumentIngestionWorkflow],
-                activities=[
-                    activities.create_document_activity,
-                    activities.update_document_activity,
-                    activities.create_ingestion_job_activity,
-                    activities.update_ingestion_job_activity,
-                    activities.process_document_activity,
-                ],
-            ),
-        ):
-            await MinioObjectCreatedHandler(env.client, TASK_QUEUE).handle(record)
-            handle = env.client.get_workflow_handle(
-                f"ingestion-job-{upload.document_id}"
-            )
-            await handle.result(rpc_timeout=timedelta(minutes=5))
+        await ingest(temporal, record, document_id)
 
-        # Assert
-        async with session_factory() as session:
-            document = await PostgresDocumentRepository(session).get_one(
-                upload.document_id, tenant_id
-            )
-            job = await session.scalar(
-                select(IngestionJob).where(
-                    IngestionJob.document_id == upload.document_id
-                )
-            )
-            chunks = await ChunkService(
-                PostgresDocumentRepository(session), PostgresChunkRepository(session)
-            ).list_for_document(upload.document_id, tenant_id)
+        document, jobs, chunks = await stored(session_factory, document_id, tenant_id)
         assert document.status is DocumentStatus.PROCESSED
-        assert job is not None and job.status is ProcessingStatus.COMPLETED
+        assert [job.status for job in jobs] == [ProcessingStatus.COMPLETED]
         found = {
             chunk.content[span.char_start : span.char_end]: span
             for chunk in chunks
@@ -200,3 +263,47 @@ class TestIngestionPipeline:
         assert found["Acme Corp invests in Globex Inc."].page_no == 1
         assert found["Competition from Globex Inc. may reduce margins."].page_no == 2
         assert all(span.bbox is not None for span in found.values())
+
+    async def test_invalid_file_is_recorded_as_failed(
+        self, tenant_id, storage, events, session_factory, temporal
+    ):
+        """
+        GIVEN bytes that are not a PDF, uploaded as 'report.pdf'
+        WHEN the upload is ingested
+        THEN the workflow fails without retries
+        AND the document and its job are FAILED, the job with the reason
+        AND no chunks are stored
+        """
+        document_id, record = await upload(
+            b"this is not a pdf", tenant_id, storage, events, session_factory
+        )
+
+        with pytest.raises(WorkflowFailureError):
+            await ingest(temporal, record, document_id)
+
+        document, jobs, chunks = await stored(session_factory, document_id, tenant_id)
+        assert document.status is DocumentStatus.FAILED
+        (job,) = jobs
+        assert job.status is ProcessingStatus.FAILED
+        assert job.error_message
+        assert chunks == []
+
+    async def test_duplicate_event_is_ingested_once(
+        self, tenant_id, storage, events, session_factory, temporal
+    ):
+        """
+        GIVEN one upload whose event Kafka delivers twice (at-least-once delivery)
+        WHEN both deliveries reach the handler
+        THEN one workflow runs: the document has one job and one set of chunks
+        """
+        document_id, record = await upload(
+            text_pdf(PAGES), tenant_id, storage, events, session_factory
+        )
+
+        await MinioObjectCreatedHandler(temporal, TASK_QUEUE).handle(record)
+        await ingest(temporal, record, document_id)
+
+        _, jobs, chunks = await stored(session_factory, document_id, tenant_id)
+        assert [job.status for job in jobs] == [ProcessingStatus.COMPLETED]
+        indexes = [chunk.chunk_index for chunk in chunks]
+        assert indexes == list(range(len(chunks))) and indexes

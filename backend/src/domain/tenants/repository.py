@@ -16,6 +16,10 @@ class TenantRepository(Protocol):
     async def get_one(self, tenant_id: UUID) -> TenantEntity:
         raise NotImplementedError("Subclasses must implement get_one method")
 
+    async def find_by_organisation(self, organisation: str) -> TenantEntity | None:
+        """Return a tenant with this organisation name, or None if there is none."""
+        raise NotImplementedError
+
     async def update(
         self,
         tenant: TenantEntity,

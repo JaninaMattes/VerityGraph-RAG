@@ -6,13 +6,13 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from src.libs.enums.document import DocumentStatus
+from src.libs.schemas.base import RequestModel
 from src.libs.types import NonEmptyStr
 
 
-class CreateUploadRequest(BaseModel):
+class CreateUploadRequest(RequestModel):
     filename: NonEmptyStr
     namespace: NonEmptyStr = "files"
-    mime_type: str = "application/pdf"
 
 
 class DocumentStatusResponse(BaseModel):

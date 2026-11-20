@@ -25,7 +25,16 @@ class ChunkRepository(Protocol):
         raise NotImplementedError
 
     async def list_for_document(
-        self, document_id: UUID, tenant_id: UUID
+        self,
+        document_id: UUID,
+        tenant_id: UUID,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Chunk]:
-        """Return the chunks of the document in order, with their spans."""
+        """Return the chunks after the first `offset`, in order, with their spans.
+
+        `limit` caps the number of chunks; None returns all (for example to rebuild
+        a projection).
+        """
         raise NotImplementedError
