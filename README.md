@@ -138,22 +138,25 @@ Planned: [Qdrant](https://qdrant.tech/),
    make install
    ```
 
-5. Start the stack:
+5. Set the first admin. Copy `docker/admin.env.example` to `docker/admin.env`
+   (git-ignored) and change the values. The example holds dummy data:
+   organisation "Acme Corp", user `acme-admin`, email `admin@acme.example`. Leave
+   the password empty to type it at a hidden prompt (at least 12 characters).
+
+6. Start the stack:
 
    ```sh
    make up
    ```
 
-6. Create a tenant and its first admin user. The command prompts for the password
-   (at least 12 characters). It never takes the password as an argument.
+   `make up` also creates the admin from `docker/admin.env` (`make admin-init`).
+   A second run with the same organisation changes nothing. Without the file, no
+   admin is created.
 
-   ```sh
-   make create-admin ORG="ACME" ADMIN_USERNAME=admin ADMIN_EMAIL=admin@acme.example
-   ```
-
-   Inside the stack, run
-   `docker compose -f docker/compose.yaml run --rm web-api python -m src.cli create-admin --organisation ACME --username admin --email admin@acme.example`.
-   A second run with the same organisation changes nothing.
+   To create an admin in the database of `backend/.env` without the stack (for
+   example in Neon), run `make create-admin`. It takes its defaults from
+   `docker/admin.env`; override them with `ORG=..`, `ADMIN_USERNAME=..` and
+   `ADMIN_EMAIL=..`.
 
    For local development, `make seed-demo` creates the tenant "Demo Organisation"
    with `demo-admin@example.com` (admin) and `demo-member@example.com` (member). It
@@ -173,6 +176,8 @@ Planned: [Qdrant](https://qdrant.tech/),
 | PostgreSQL (app / Temporal) | `localhost:5432` / `localhost:5435` |
 | Kafka (from containers / from the host) | `kafka-kraft:9092` / `localhost:9094` |
 
+All ports bind to `127.0.0.1`, so other machines on the network cannot reach them.
+
 ## Usage
 
 Every endpoint except health and login needs a bearer token. Do these steps to log
@@ -190,8 +195,14 @@ in, upload a document and start the ingestion:
 
    A wrong email or password returns 401 without saying which one was wrong. More
    than `LOGIN_ATTEMPTS_PER_MINUTE` (10) attempts from one address in a minute return
-   429 with `Retry-After`. Each API process counts separately; behind a proxy, run
-   uvicorn with `--proxy-headers`, or all clients share the proxy's address.
+   429 with `Retry-After`. Each API process counts separately. Behind a proxy, set
+   `TRUSTED_PROXY_COUNT` (Render: 1), or all clients share the proxy's address. At
+   most `MAX_CONCURRENT_PASSWORD_CHECKS` (2) password checks run at once, because
+   each uses 64 MiB.
+
+   `POST /documents` accepts PDF, DOCX, DOC, Markdown, CSV, HTML, PNG, JPEG, TIFF
+   and PPTX files, and files without an extension. Other types return 422
+   `unsupported_file_type`, so an upload is never lost after it.
 
 2. Request an upload URL:
 
@@ -290,12 +301,16 @@ backend/src/
 ├── libs/             # Settings, logging, enums, schemas, exceptions
 └── cli.py            # Admin commands: python -m src.cli create-admin | seed-demo
 backend/tests/        # Mirrors src/; integration/ runs against a real PostgreSQL
-docker/               # Compose stack and init scripts
+docker/               # Compose stack, VM override (compose.vm.yaml), init scripts
+render.yaml           # Render Blueprint for the API (see docs/deployment.md)
 frontend/             # Vite + React scaffold
 docs/                 # Documentation and images
 ```
 
 ## Roadmap
+
+The ordered next steps, each with its acceptance criteria, are in
+[docs/next-steps.md](docs/next-steps.md).
 
 1. **Ingestion:** parse documents with Docling, chunk them, and store the chunks with
    their provenance. *(Done. Parsing runs on its own Temporal task queue.)*
@@ -304,7 +319,7 @@ docs/                 # Documentation and images
 4. **Agentic querying:** a LangGraph agent with MCP tools.
 5. **Evaluation and observability:** RAGAS, OpenTelemetry tracing.
 6. **Production:** tenant isolation in every store, deployment. *(Authentication
-   with JWT is done.)*
+   with JWT is done. Free-tier deployment: [docs/deployment.md](docs/deployment.md).)*
 
 ## License
 
